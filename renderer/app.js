@@ -55,6 +55,13 @@ async function startApp() {
   $('ovAddInstBtn').addEventListener('click', () => DeviceUI.openInstanceModal())
   $('ovFirstAddBtn').addEventListener('click', () => DeviceUI.openInstanceModal())
   $('ovRefreshBtn').addEventListener('click', () => refreshOverview())
+  // 视图切换（卡片/列表）
+  $('ovViewToggle').addEventListener('click', () => {
+    const ovContent = $('ovContent')
+    const isList = ovContent.classList.toggle('list-view')
+    $('ovViewToggle').textContent = isList ? '📇 卡片' : '📋 列表'
+    DeviceUI.renderOverviewPage()
+  })
 
   // ── 设备调试页 ──
   $('ddDeviceSel').addEventListener('change', () => renderDebugForDevice($('ddDeviceSel').value))
@@ -100,7 +107,7 @@ async function startApp() {
   DeviceUI.renderMgrPage()
   populateDeviceDebugSel()
 
-  log('info', 'ModbusMate v0.3 就绪，请连接设备')
+  log('info', 'Modbus 设备调试器 v0.3 就绪，请连接设备')
 
   // ── 主题初始化 ──
   initTheme(cfg.theme || 'dark')

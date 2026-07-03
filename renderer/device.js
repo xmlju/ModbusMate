@@ -6,7 +6,7 @@ const DeviceUI = (() => {
   // ── 数据状态 ──
   const state = {
     types: [],        // [{ id, name, points: [...] }]
-    instances: [],    // [{ id, typeId, name, host, port, unitId, interval }]
+    instances: [],    // [{ id, typeId, name, host, port, unitId, interval, imagePath }]
     running: {},      // id → true/false
     data: {},         // id → blocks（最新采集数据）
     statuses: {},     // id → 'connected'|'offline'|'disconnected'|'error'
@@ -16,6 +16,9 @@ const DeviceUI = (() => {
   // ── 工具 ──
   let nextId = 1
   function genId() { return `dev${nextId++}` }
+
+  // 设备图片暂存路径（新选择或被编辑的）
+  let _pendingImagePath = ''
 
   function getWords(area, type) {
     if (area === 'coil' || area === 'discrete') return 1
@@ -140,8 +143,13 @@ const DeviceUI = (() => {
       const offline = status === 'offline' || status === 'disconnected' || status === 'error'
       const statusDot = status === 'connected' ? 'good' : status === 'offline' ? 'warn' : status === 'error' ? 'crit' : 'idle'
       const statusText = status === 'connected' ? '在线' : status === 'offline' ? '离线·重连中' : status === 'error' ? '连接失败' : '未启动'
+      const thumbHtml = inst.imagePath
+        ? `<img class="dev-thumb-img" data-path="${escapeHtml(inst.imagePath)}">`
+        : `<span class="dev-thumb-placeholder">No img</span>`
       html += `<section class="dev-group ${offline ? 'offline' : ''}" data-inst-id="${inst.id}">
         <div class="dev-head">
+          <span class="collapse-toggle" data-inst-id="${inst.id}">▾</span>
+          ${thumbHtml}
           <span class="dev-name">${escapeHtml(inst.name)}</span>
           <span class="dev-meta">${escapeHtml(inst.host)}:${inst.port} · 从站${inst.unitId} · 周期 ${inst.interval}ms</span>
           <span class="pill"><span class="dot ${statusDot}"></span>${statusText}</span>
@@ -151,9 +159,24 @@ const DeviceUI = (() => {
       </section>`
     })
     content.innerHTML = html
+    // 绑定折叠切换
+    content.querySelectorAll('.collapse-toggle').forEach(el => {
+      el.addEventListener('click', () => {
+        const section = el.closest('.dev-group')
+        section.classList.toggle('collapsed')
+        el.textContent = section.classList.contains('collapsed') ? '▸' : '▾'
+      })
+    })
     // 绑定启停
     content.querySelectorAll('.dev-toggle-ov').forEach(btn => {
       btn.addEventListener('click', () => toggleInstance(btn.dataset.id))
+    })
+    // 异步加载设备图片缩略图
+    content.querySelectorAll('.dev-thumb-img').forEach(img => {
+      const path = img.dataset.path
+      if (path) {
+        window.api.readImage(path).then(dataUrl => { img.src = dataUrl }).catch(() => {})
+      }
     })
     // 渲染每设备卡片
     activeInsts.forEach(inst => renderInstanceCards(inst.id))
@@ -391,6 +414,7 @@ const DeviceUI = (() => {
   // ── 实例管理弹窗 ──
   function openInstanceModal() {
     if (state.types.length === 0) { log('error', '请先创建设备类型'); return }
+    _pendingImagePath = ''
     const overlay = $('instanceModal'); overlay.classList.remove('hidden')
     const sel = $('instTypeSel')
     sel.innerHTML = state.types.map(t => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join('')
@@ -398,6 +422,27 @@ const DeviceUI = (() => {
     $('instPort').value = 502; $('instUnitId').value = 1; $('instInterval').value = 1000
     $('instModalError').textContent = ''
     $('instModalTitle').textContent = '添加设备实例'
+    // 图片预览行隐藏
+    $('instImagePreviewRow').style.display = 'none'
+    $('instImagePreview').src = ''
+    $('instImageInput').value = ''
+    // 图片选择
+    $('instImageInput').onchange = async () => {
+      const file = $('instImageInput').files[0]
+      if (!file) return
+      try {
+        // 临时预览
+        const reader = new FileReader()
+        reader.onload = (e) => { $('instImagePreview').src = e.target.result; $('instImagePreviewRow').style.display = '' }
+        reader.readAsDataURL(file)
+        // 上传到 userData/images/
+        const srcPath = file.path || file.name  // Electron 的 file input 提供 .path
+        _pendingImagePath = srcPath ? await window.api.copyImage(srcPath) : ''
+      } catch (e) {
+        console.error('图片处理失败', e)
+        _pendingImagePath = ''
+      }
+    }
     $('instModalOk').onclick = async () => {
       const name = $('instName').value.trim(); const host = $('instHost').value.trim()
       const port = Number($('instPort').value); const unitId = Number($('instUnitId').value)
@@ -407,7 +452,7 @@ const DeviceUI = (() => {
       if (!Number.isInteger(port) || port < 1 || port > 65535) { $('instModalError').textContent = '端口范围 1~65535'; return }
       if (!Number.isInteger(unitId) || unitId < 0 || unitId > 255) { $('instModalError').textContent = '从站 ID 范围 0~255'; return }
       if (![100, 500, 1000, 2000, 5000, 10000].includes(interval)) { $('instModalError').textContent = '周期值无效'; return }
-      state.instances.push({ id: genId(), typeId, name, host, port, unitId, interval })
+      state.instances.push({ id: genId(), typeId, name, host, port, unitId, interval, imagePath: _pendingImagePath })
       await saveToConfig(); closeInstanceModal(); renderMgrPage(); renderOverviewPage()
       log('info', `已添加设备实例「${name}」`)
       // 跳转到管理页让用户看到实例
@@ -424,6 +469,7 @@ const DeviceUI = (() => {
     const inst = state.instances.find(i => i.id === id)
     if (!inst) { alert('未找到实例'); return }
     if (state.running[id]) { alert('请先停止设备再编辑'); return }
+    _pendingImagePath = ''
     const overlay = $('instanceModal'); overlay.classList.remove('hidden')
     const sel = $('instTypeSel')
     sel.innerHTML = state.types.map(t => `<option value="${t.id}" ${t.id === inst.typeId ? 'selected' : ''}>${escapeHtml(t.name)}</option>`).join('')
@@ -434,6 +480,29 @@ const DeviceUI = (() => {
     $('instInterval').value = inst.interval
     $('instModalError').textContent = ''
     $('instModalTitle').textContent = '编辑设备实例'
+    // 图片：如有则显示预览
+    if (inst.imagePath) {
+      $('instImagePreviewRow').style.display = ''
+      window.api.readImage(inst.imagePath).then(url => { $('instImagePreview').src = url }).catch(() => { $('instImagePreview').src = '' })
+    } else {
+      $('instImagePreviewRow').style.display = 'none'
+      $('instImagePreview').src = ''
+    }
+    $('instImageInput').value = ''
+    $('instImageInput').onchange = async () => {
+      const file = $('instImageInput').files[0]
+      if (!file) return
+      try {
+        const reader = new FileReader()
+        reader.onload = (e) => { $('instImagePreview').src = e.target.result; $('instImagePreviewRow').style.display = '' }
+        reader.readAsDataURL(file)
+        const srcPath = file.path || file.name
+        _pendingImagePath = srcPath ? await window.api.copyImage(srcPath) : ''
+      } catch (e) {
+        console.error('图片处理失败', e)
+        _pendingImagePath = ''
+      }
+    }
     $('instModalOk').onclick = async () => {
       const name = $('instName').value.trim(); const host = $('instHost').value.trim()
       const port = Number($('instPort').value); const unitId = Number($('instUnitId').value)
@@ -444,6 +513,7 @@ const DeviceUI = (() => {
       if (!Number.isInteger(unitId) || unitId < 0 || unitId > 255) { $('instModalError').textContent = '从站 ID 范围 0~255'; return }
       if (![100, 500, 1000, 2000, 5000, 10000].includes(interval)) { $('instModalError').textContent = '周期值无效'; return }
       Object.assign(inst, { typeId, name, host, port, unitId, interval })
+      if (_pendingImagePath) inst.imagePath = _pendingImagePath
       await saveToConfig(); closeInstanceModal(); renderMgrPage(); renderOverviewPage()
       log('info', `已更新设备实例「${name}」`)
       if (window.populateDeviceDebugSel) window.populateDeviceDebugSel()
