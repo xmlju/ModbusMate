@@ -1,0 +1,21 @@
+{
+  "name": "modbusmate",
+  "version": "0.1.0",
+  "description": "ModbusMate — Modbus-TCP 调试工具",
+  "main": "main/index.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "MM_DEV=1 electron .",
+    "test": "vitest run",
+    "sim": "node test/simulator.js",
+    "dist": "electron-builder"
+  },
+  "dependencies": {
+    "modbus-serial": "^8.0.17"
+  },
+  "devDependencies": {
+    "electron": "^35.0.0",
+    "electron-builder": "^25.1.8",
+    "vitest": "^3.0.0"
+  }
+}
