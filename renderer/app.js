@@ -71,6 +71,13 @@ async function startApp() {
   // ── 类型/实例管理页 ──
   $('mgrAddTypeBtn').addEventListener('click', () => DeviceUI.openTypeEditorForNew())
   $('mgrAddInstBtn').addEventListener('click', () => DeviceUI.openInstanceModal())
+  $('mgrRefreshBtn').addEventListener('click', async () => {
+    const cfg = await window.api.loadConfig()
+    DeviceUI.loadFromConfig(cfg)
+    DeviceUI.renderMgrPage()
+    DeviceUI.renderOverviewPage()
+    log('info', '已重新加载配置')
+  })
 
   // ── DeviceUI ──
   window._appLogFn = (level, msg) => log(level, msg)
@@ -97,10 +104,15 @@ async function startApp() {
 function switchNav(page) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.page === page))
   document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === page + 'Page'))
-  // 切到特定页时重新渲染内容
-  if (page === 'devOverview') { DeviceUI.renderOverviewPage(); updateOnlineOfflinePills() }
-  if (page === 'mgrPage') DeviceUI.renderMgrPage()
-  if (page === 'devDebug') populateDeviceDebugSel()
+  // 切到特定页时重新加载配置并渲染
+  if (page === 'devOverview' || page === 'mgrPage' || page === 'devDebug') {
+    window.api.loadConfig().then(cfg => {
+      DeviceUI.loadFromConfig(cfg)
+      if (page === 'devOverview') { DeviceUI.renderOverviewPage(); updateOnlineOfflinePills() }
+      if (page === 'mgrPage') DeviceUI.renderMgrPage()
+      if (page === 'devDebug') populateDeviceDebugSel()
+    })
+  }
 }
 window.switchNav = switchNav  // 暴露给 device.js
 
