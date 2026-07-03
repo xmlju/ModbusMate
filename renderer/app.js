@@ -19,6 +19,8 @@ const cleanErr = msg => String(msg).replace(/^Error invoking remote method '[^']
 async function init() { startApp() }
 
 async function startApp() {
+  // 首次启动自动填充示例数据
+  await SeedData.ensureSeedData()
   const cfg = await window.api.loadConfig()
   if (cfg.host) $('host').value = cfg.host
   if (cfg.port) $('port').value = cfg.port
