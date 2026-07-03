@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>ModbusMate 视觉稿 — IoT 控制台风格（静态设计稿）</title>
+<style>
+/* ═══ 设计 token（可原样拷入 style.css）═══ */
+:root {
+  --page: #0d0d0d;
+  --surface: #1a1a19;
+  --surface-2: #232322;
+  --border: rgba(255,255,255,.10);
+  --ink-1: #ffffff;
+  --ink-2: #c3c2b7;
+  --ink-3: #898781;
+  --accent: #3987e5;
+  --status-good: #0ca30c;
+  --status-warning: #fab219;
+  --status-critical: #d03b3b;
+  --mono: ui-monospace, Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--page); color: var(--ink-2); font: 13px/1.5 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; }
+
+/* ═══ 布局骨架：左导航 + 主区 ═══ */
+.shell { display: flex; min-height: 100vh; }
+.nav { width: 200px; background: var(--surface); border-right: 1px solid var(--border); padding: 16px 10px; flex-shrink: 0; }
+.brand { color: var(--ink-1); font-size: 15px; font-weight: 600; padding: 4px 10px 16px; }
+.brand small { display: block; color: var(--ink-3); font-weight: 400; font-size: 11px; }
+.nav-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 6px; color: var(--ink-2); cursor: pointer; margin-bottom: 2px; }
+.nav-item.active { background: rgba(57,135,229,.15); color: var(--ink-1); box-shadow: inset 2px 0 0 var(--accent); }
+.nav-item:hover { background: var(--surface-2); }
+.main { flex: 1; padding: 0 24px 24px; min-width: 0; }
+
+/* 顶栏 */
+.topbar { display: flex; align-items: center; gap: 14px; padding: 14px 0; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+.topbar h1 { color: var(--ink-1); font-size: 18px; font-weight: 600; margin-right: auto; }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border); font-size: 12px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.dot.good { background: var(--status-good); }
+.dot.warn { background: var(--status-warning); animation: breath 1.2s infinite; }
+.dot.crit { background: var(--status-critical); }
+@keyframes breath { 50% { opacity: .3; } }
+.btn { padding: 6px 14px; border-radius: 6px; border: 1px solid var(--accent); background: var(--accent); color: #fff; font-size: 13px; cursor: pointer; }
+.btn.ghost { background: transparent; color: var(--ink-2); border-color: var(--border); }
+.btn.sm { padding: 3px 10px; font-size: 12px; }
+
+/* ═══ 设备组卡 ═══ */
+.dev-group { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 20px; overflow: hidden; }
+.dev-head { display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: var(--surface-2); border-bottom: 1px solid var(--border); }
+.dev-name { color: var(--ink-1); font-size: 15px; font-weight: 600; }
+.dev-meta { color: var(--ink-3); font-size: 12px; font-family: var(--mono); }
+.dev-head .pill { margin-left: auto; }
+.dev-body { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; padding: 16px; }
+.dev-group.offline { border-left: 3px solid var(--status-critical); }
+.dev-group.offline .dev-body { opacity: .45; }
+
+/* 点位 stat tile */
+.tile { background: var(--page); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; transition: box-shadow .6s; }
+.tile.flash { box-shadow: 0 0 0 2px var(--accent); transition: none; }
+.tile-name { font-size: 13px; color: var(--ink-2); margin-bottom: 6px; }
+.tile-value { font-size: 28px; font-weight: 600; color: var(--ink-1); line-height: 1.2; }
+.tile-unit { font-size: 14px; color: var(--ink-3); margin-left: 4px; font-weight: 400; }
+.tile-bar { height: 6px; background: var(--surface-2); border-radius: 3px; margin-top: 10px; overflow: hidden; }
+.tile-bar > i { display: block; height: 100%; background: var(--accent); border-radius: 3px; transition: width .3s; }
+
+/* ═══ 设备调试页：点位表 ═══ */
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 20px; }
+.panel-head { display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: var(--surface-2); border-bottom: 1px solid var(--border); }
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; padding: 8px 16px; font-size: 12px; font-weight: 500; color: var(--ink-3); border-bottom: 1px solid var(--border); }
+td { padding: 9px 16px; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+tr:last-child td { border-bottom: none; }
+tr.changed td { background: rgba(57,135,229,.08); }
+td .mono { font-family: var(--mono); font-size: 12px; color: var(--ink-2); }
+td .val { color: var(--ink-1); font-weight: 500; }
+.log-strip { padding: 10px 16px; font-family: var(--mono); font-size: 12px; color: var(--ink-3); }
+.log-strip .err { color: var(--status-critical); }
+.stage-label { color: var(--ink-3); font-size: 12px; letter-spacing: 2px; margin: 28px 0 10px; }
+</style>
+</head>
+<body>
+<div class="shell">
+  <!-- 左侧全局导航 -->
+  <nav class="nav">
+    <div class="brand">📟 ModbusMate<small>企业内部 · Modbus-TCP 监控调试</small></div>
+    <div class="nav-item active">📟 设备总览</div>
+    <div class="nav-item">🔧 设备调试</div>
+    <div class="nav-item">🧪 调试工作台</div>
+    <div class="nav-item">📜 通信日志</div>
+    <div class="nav-item">⚙️ 类型/实例管理</div>
+  </nav>
+
+  <main class="main">
+    <div class="stage-label">视觉稿 A ── 设备总览（首页）</div>
+
+    <div class="topbar">
+      <h1>设备总览</h1>
+      <span class="pill"><span class="dot good"></span>在线 1</span>
+      <span class="pill"><span class="dot crit"></span>离线 1</span>
+      <button class="btn">＋ 添加设备</button>
+    </div>
+
+    <!-- 设备组：在线 -->
+    <section class="dev-group">
+      <div class="dev-head">
+        <span class="dev-name">1号电池柜</span>
+        <span class="dev-meta">192.168.1.10:502 · 从站1 · 周期 1s</span>
+        <span class="pill"><span class="dot good"></span>在线</span>
+        <button class="btn ghost sm">⏸ 停止</button>
+      </div>
+      <div class="dev-body">
+        <div class="tile">
+          <div class="tile-name">电池电量</div>
+          <div class="tile-value">85<span class="tile-unit">%</span></div>
+          <div class="tile-bar"><i style="width:85%"></i></div>
+        </div>
+        <div class="tile flash">
+          <div class="tile-name">电流</div>
+          <div class="tile-value">14.2<span class="tile-unit">A</span></div>
+        </div>
+        <div class="tile">
+          <div class="tile-name">电压</div>
+          <div class="tile-value">220<span class="tile-unit">V</span></div>
+        </div>
+        <div class="tile">
+          <div class="tile-name">温度</div>
+          <div class="tile-value">41.9<span class="tile-unit">℃</span></div>
+        </div>
+        <div class="tile">
+          <div class="tile-name">充电开关</div>
+          <div class="tile-value">ON</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 设备组：离线 -->
+    <section class="dev-group offline">
+      <div class="dev-head">
+        <span class="dev-name">2号电池柜</span>
+        <span class="dev-meta">192.168.1.11:502 · 从站1 · 周期 1s</span>
+        <span class="pill"><span class="dot warn"></span>离线 · 自动重连中</span>
+        <button class="btn ghost sm">⏸ 停止</button>
+      </div>
+      <div class="dev-body">
+        <div class="tile"><div class="tile-name">电池电量</div><div class="tile-value">——<span class="tile-unit">%</span></div><div class="tile-bar"><i style="width:0"></i></div></div>
+        <div class="tile"><div class="tile-name">电流</div><div class="tile-value">——<span class="tile-unit">A</span></div></div>
+        <div class="tile"><div class="tile-name">电压</div><div class="tile-value">——<span class="tile-unit">V</span></div></div>
+      </div>
+    </section>
+
+    <div class="stage-label">视觉稿 B ── 设备调试页</div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <span class="dev-name">1号电池柜</span>
+        <span class="pill"><span class="dot good"></span>在线</span>
+        <span class="dev-meta">192.168.1.10:502 · 从站1 · 周期 1s</span>
+        <button class="btn ghost sm" style="margin-left:auto">⏸ 停止</button>
+      </div>
+      <table>
+        <thead><tr><th>点位</th><th>区域</th><th>地址</th><th>类型</th><th>原始值</th><th>解析值</th><th style="width:70px">操作</th></tr></thead>
+        <tbody>
+          <tr><td class="val">电池电量</td><td>保持寄存器</td><td class="mono">40001</td><td>UInt16 ×0.1</td><td class="mono">0x0352</td><td class="val">85 %</td><td><button class="btn ghost sm">写入</button></td></tr>
+          <tr class="changed"><td class="val">电流</td><td>保持寄存器</td><td class="mono">40002</td><td>UInt16 ×0.1</td><td class="mono">0x008E</td><td class="val">14.2 A</td><td><button class="btn ghost sm">写入</button></td></tr>
+          <tr><td class="val">电压</td><td>保持寄存器</td><td class="mono">40003</td><td>UInt16</td><td class="mono">0x00DC</td><td class="val">220 V</td><td><button class="btn ghost sm">写入</button></td></tr>
+          <tr><td class="val">温度</td><td>输入寄存器</td><td class="mono">30001</td><td>Float32 AB, k=0.04 b=-40</td><td class="mono">0x4523</td><td class="val">41.9 ℃</td><td></td></tr>
+          <tr><td class="val">充电开关</td><td>线圈</td><td class="mono">00001</td><td>开关量</td><td class="mono">1</td><td class="val">ON</td><td><button class="btn ghost sm">写入</button></td></tr>
+        </tbody>
+      </table>
+      <div class="log-strip">
+        [14:32:05] 写入成功：40002 ← 142　　<span class="err">[14:31:48] 读取失败：请求超时（已自动重试）</span>　　[14:31:20] 已连接 192.168.1.10:502
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>
