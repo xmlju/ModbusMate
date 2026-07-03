@@ -1,3 +1,17 @@
-// preload.js — IPC 白名单桥接（Task 10 会填充 API）
-const { contextBridge } = require('electron')
-contextBridge.exposeInMainWorld('api', {})
+// preload.js — IPC 白名单桥接：渲染层只能访问这里显式暴露的 API
+const { contextBridge, ipcRenderer } = require('electron')
+
+contextBridge.exposeInMainWorld('api', {
+  connect:          p    => ipcRenderer.invoke('modbus:connect', p),
+  disconnect:       ()   => ipcRenderer.invoke('modbus:disconnect'),
+  startPoll:        c    => ipcRenderer.invoke('modbus:startPoll', c),
+  stopPoll:         ()   => ipcRenderer.invoke('modbus:stopPoll'),
+  write:            w    => ipcRenderer.invoke('modbus:write', w),
+  loadConfig:       ()   => ipcRenderer.invoke('config:load'),
+  saveConfig:       c    => ipcRenderer.invoke('config:save', c),
+  activationStatus: ()   => ipcRenderer.invoke('activation:status'),
+  activationVerify: code => ipcRenderer.invoke('activation:verify', code),
+  onData:   fn => ipcRenderer.on('modbus:data',   (_e, d) => fn(d)),
+  onStatus: fn => ipcRenderer.on('modbus:status', (_e, s) => fn(s)),
+  onLog:    fn => ipcRenderer.on('modbus:log',    (_e, l) => fn(l)),
+})
