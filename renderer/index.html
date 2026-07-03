@@ -44,6 +44,7 @@
           <span class="pill" id="devOnlinePill"><span class="dot good"></span>在线 0</span>
           <span class="pill" id="devOfflinePill"><span class="dot crit"></span>离线 0</span>
           <button class="btn ghost" id="ovRefreshBtn">🔄 刷新</button>
+          <button class="btn ghost" id="ovViewToggle">📋 列表</button>
           <button class="btn" id="ovAddInstBtn">＋ 添加设备</button>
         </div>
         <div id="ovContent" style="flex:1;overflow-y:auto">
@@ -229,7 +230,7 @@
   <!-- 实例管理弹窗 -->
   <div id="instanceModal" class="overlay hidden">
     <div class="modal-box" style="width:380px">
-      <h3>添加设备实例</h3>
+      <h3 id="instModalTitle">添加设备实例</h3>
       <div class="inst-form">
         <div class="if-row"><span>实例名</span><input id="instName" placeholder="如 1号电池柜"></div>
         <div class="if-row"><span>设备类型</span><select id="instTypeSel"></select></div>

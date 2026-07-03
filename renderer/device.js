@@ -237,11 +237,13 @@ const DeviceUI = (() => {
             <span class="mgr-name">${escapeHtml(inst.name)}</span>
             <span class="mgr-meta">${type ? escapeHtml(type.name) : '（未知）'} · ${escapeHtml(inst.host)}:${inst.port} · ${running ? '运行中' : '已停止'}</span>
             <button class="btn ghost sm mgr-toggle-inst" data-id="${inst.id}">${running ? '停止' : '启动'}</button>
+            <button class="btn ghost sm mgr-edit-inst" data-id="${inst.id}">编辑</button>
             <button class="btn ghost sm mgr-del-inst" style="border-color:var(--status-critical);color:var(--status-critical)" data-id="${inst.id}">删除</button>
           </div>`
         }).join('')
-        // 直接绑定实例启停/删除
+        // 直接绑定实例启停/编辑/删除
         instList.querySelectorAll('.mgr-toggle-inst').forEach(btn => btn.onclick = () => toggleInstance(btn.dataset.id))
+        instList.querySelectorAll('.mgr-edit-inst').forEach(btn => btn.onclick = () => editInstance(btn.dataset.id))
         instList.querySelectorAll('.mgr-del-inst').forEach(btn => btn.onclick = () => deleteInstance(btn.dataset.id))
       }
     }
@@ -395,6 +397,7 @@ const DeviceUI = (() => {
     $('instName').value = ''; $('instHost').value = '192.168.1.'
     $('instPort').value = 502; $('instUnitId').value = 1; $('instInterval').value = 1000
     $('instModalError').textContent = ''
+    $('instModalTitle').textContent = '添加设备实例'
     $('instModalOk').onclick = async () => {
       const name = $('instName').value.trim(); const host = $('instHost').value.trim()
       const port = Number($('instPort').value); const unitId = Number($('instUnitId').value)
@@ -415,6 +418,37 @@ const DeviceUI = (() => {
   }
 
   function closeInstanceModal() { $('instanceModal').classList.add('hidden') }
+
+  // ── 编辑实例（复用弹窗） ──
+  function editInstance(id) {
+    const inst = state.instances.find(i => i.id === id)
+    if (!inst) { alert('未找到实例'); return }
+    if (state.running[id]) { alert('请先停止设备再编辑'); return }
+    const overlay = $('instanceModal'); overlay.classList.remove('hidden')
+    const sel = $('instTypeSel')
+    sel.innerHTML = state.types.map(t => `<option value="${t.id}" ${t.id === inst.typeId ? 'selected' : ''}>${escapeHtml(t.name)}</option>`).join('')
+    $('instName').value = inst.name
+    $('instHost').value = inst.host
+    $('instPort').value = inst.port
+    $('instUnitId').value = inst.unitId
+    $('instInterval').value = inst.interval
+    $('instModalError').textContent = ''
+    $('instModalTitle').textContent = '编辑设备实例'
+    $('instModalOk').onclick = async () => {
+      const name = $('instName').value.trim(); const host = $('instHost').value.trim()
+      const port = Number($('instPort').value); const unitId = Number($('instUnitId').value)
+      const interval = Number($('instInterval').value); const typeId = $('instTypeSel').value
+      if (!name) { $('instModalError').textContent = '请输入实例名称'; return }
+      if (!host) { $('instModalError').textContent = '请输入设备 IP'; return }
+      if (!Number.isInteger(port) || port < 1 || port > 65535) { $('instModalError').textContent = '端口范围 1~65535'; return }
+      if (!Number.isInteger(unitId) || unitId < 0 || unitId > 255) { $('instModalError').textContent = '从站 ID 范围 0~255'; return }
+      if (![100, 500, 1000, 2000, 5000, 10000].includes(interval)) { $('instModalError').textContent = '周期值无效'; return }
+      Object.assign(inst, { typeId, name, host, port, unitId, interval })
+      await saveToConfig(); closeInstanceModal(); renderMgrPage(); renderOverviewPage()
+      log('info', `已更新设备实例「${name}」`)
+      if (window.populateDeviceDebugSel) window.populateDeviceDebugSel()
+    }
+  }
 
   // ── 初始化（IPC 监听）──
   function init() {
