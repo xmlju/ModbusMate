@@ -100,6 +100,8 @@ npm run sim:plc    # 监听 8503 端口
 
 - 开发者署名信息
 
+![主界面概览](screenshots/main-interface.png)
+
 ---
 
 ## 四、连接真实设备
@@ -244,6 +246,8 @@ npm run sim:plc    # 监听 8503 端口
 | k / b | 公式换算的系数和偏移 | k=0.1, b=0 |
 | 单位 | 工程单位 | V、A、℃、% |
 
+![类型/实例管理页面](screenshots/type-manager.png)
+
 ---
 
 ## 九、设备管理
@@ -282,6 +286,8 @@ npm run sim:plc    # 监听 8503 端口
 ## 十、设备总览与仪表盘
 
 当你启动了一台或多台设备后，可以到 **「📋 设备总览」** 页面查看它们的实时数据。
+
+![设备总览仪表盘](screenshots/device-overview.png)
 
 ### 10.1 怎么看设备总览
 
