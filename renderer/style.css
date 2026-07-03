@@ -233,8 +233,7 @@ td select { padding: 2px 4px; margin-right: 4px; background: var(--surface-2); c
 /* ── 连接状态文本 ── */
 #statusText { color: var(--ink-2); }
 
-/* ── 主题切换（右上角） ── */
-.theme-corner { position: fixed; top: 10px; right: 14px; z-index: 5; display: flex; gap: 4px; }
-.theme-btn { width: 30px; height: 30px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--ink-3); font-size: 15px; cursor: pointer; line-height: 1; display: flex; align-items: center; justify-content: center; transition: all .15s; }
-.theme-btn:hover { background: var(--surface-2); color: var(--ink-1); }
-.theme-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+/* ── 主题切换（右上角下拉） ── */
+.theme-corner { position: fixed; top: 10px; right: 14px; z-index: 5; display: flex; align-items: center; gap: 6px; }
+.theme-label { font-size: 12px; color: var(--ink-3); white-space: nowrap; }
+#themeSelect { padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--ink-1); font-size: 12px; cursor: pointer; }

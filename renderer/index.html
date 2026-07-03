@@ -27,9 +27,12 @@
     <main class="main">
       <!-- 右上角主题切换 -->
       <div class="theme-corner">
-        <button class="theme-btn" data-theme-val="dark" title="深色">🌙</button>
-        <button class="theme-btn" data-theme-val="system" title="跟随系统">💻</button>
-        <button class="theme-btn" data-theme-val="light" title="浅色">☀️</button>
+        <span class="theme-label">显示模式</span>
+        <select id="themeSelect">
+          <option value="dark">🌙 深色</option>
+          <option value="system">💻 跟随系统</option>
+          <option value="light">☀️ 浅色</option>
+        </select>
       </div>
 
       <!-- ═══ 页1：设备总览 ═══ -->

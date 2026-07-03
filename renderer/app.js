@@ -102,10 +102,8 @@ async function startApp() {
 
   // ── 主题初始化 ──
   initTheme(cfg.theme || 'dark')
-  // 绑定主题点击
-  document.querySelectorAll('.theme-btn').forEach(btn => {
-    btn.addEventListener('click', () => applyTheme(btn.dataset.themeVal))
-  })
+  // 绑定下拉切换
+  $('themeSelect').addEventListener('change', () => applyTheme($('themeSelect').value))
 }
 
 // ── 导航页切换 ──
@@ -131,10 +129,8 @@ let systemMedia = null  // matchMedia 句柄
 function applyTheme(theme) {
   currentTheme = theme
   document.documentElement.setAttribute('data-theme', theme)
-  // 更新按钮样式
-  document.querySelectorAll('.theme-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.themeVal === theme)
-  })
+  // 更新下拉选中值
+  $('themeSelect').value = theme
   // 持久化
   window.api.loadConfig().then(cfg => window.api.saveConfig({ ...cfg, theme }))
 }
