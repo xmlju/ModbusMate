@@ -43,8 +43,13 @@ const DeviceUI = (() => {
   }
 
   async function saveToConfig() {
-    const cfg = await window.api.loadConfig()
-    await window.api.saveConfig({ ...cfg, deviceTypes: state.types, deviceInstances: state.instances })
+    try {
+      const cfg = await window.api.loadConfig()
+      await window.api.saveConfig({ ...cfg, deviceTypes: state.types, deviceInstances: state.instances })
+    } catch (e) {
+      console.error('saveToConfig 失败', e)
+      alert('保存配置失败: ' + (e.message || e))
+    }
   }
 
   function log(level, message) {
