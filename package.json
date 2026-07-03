@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Modbus 设备调试器 — Modbus-TCP 调试工具",
+  "author": "xmlju",
   "main": "main/index.js",
   "scripts": {
     "start": "electron .",
