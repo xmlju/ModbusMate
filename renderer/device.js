@@ -389,6 +389,8 @@ const DeviceUI = (() => {
       state.instances.push({ id: genId(), typeId, name, host, port, unitId, interval })
       await saveToConfig(); closeInstanceModal(); renderMgrPage(); renderOverviewPage()
       log('info', `已添加设备实例「${name}」`)
+      // 跳转到管理页让用户看到实例
+      switchNav('mgrPage')
       // 刷新设备调试下拉
       if (window.populateDeviceDebugSel) window.populateDeviceDebugSel()
     }
