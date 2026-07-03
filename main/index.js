@@ -4,10 +4,12 @@ const path = require('path')
 const fs = require('fs')
 const ModbusService = require('./modbus-service')
 const Poller = require('./poller')
+const DeviceManager = require('./device-manager')
 const { Activation } = require('./activation')
 
 const service = new ModbusService()
 const poller = new Poller(service)
+const deviceManager = new DeviceManager()
 let activation = null
 let win = null
 
@@ -61,6 +63,14 @@ function registerIpc() {
 //  ipcMain.handle('activation:status', () => activation.isActivated())
   //  ipcMain.handle('activation:verify', (_e, code) => activation.activate(code))
 
+  // v0.2 设备采集 IPC
+  ipcMain.handle('device:start', (_e, { id, cfg }) => deviceManager.start(id, cfg))
+  ipcMain.handle('device:stop', (_e, id) => deviceManager.stop(id))
+  ipcMain.handle('device:write', (_e, { id, area, addr, words }) => deviceManager.write(id, area, addr, words))
+  deviceManager.on('data', d => send('device:data', d))
+  deviceManager.on('status', s => send('device:status', s))
+  deviceManager.on('pollError', e => send('device:log', { level: 'error', id: e.id, message: `读取失败：${e.message}` }))
+
   poller.on('data', d => send('modbus:data', d))
   poller.on('pollError', msg => send('modbus:log', { level: 'error', message: `读取失败：${msg}` }))
   poller.on('offline', () => send('modbus:status', { state: 'offline' }))
@@ -74,5 +84,5 @@ app.whenReady().then(() => {
 }).catch(err => { console.error(err); app.quit() })
 
 // macOS 惯例：关窗不退出，点 Dock 图标重开窗口；其他平台关窗即退出
-app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
+app.on('window-all-closed', () => { deviceManager.stopAll(); if (process.platform !== 'darwin') app.quit() })
 app.on('activate', () => { if (win === null && activation) createWindow() })

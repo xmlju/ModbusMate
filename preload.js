@@ -14,4 +14,12 @@ contextBridge.exposeInMainWorld('api', {
   onData:   fn => ipcRenderer.on('modbus:data',   (_e, d) => fn(d)),
   onStatus: fn => ipcRenderer.on('modbus:status', (_e, s) => fn(s)),
   onLog:    fn => ipcRenderer.on('modbus:log',    (_e, l) => fn(l)),
+
+  // v0.2 设备采集 API
+  deviceStart:  p  => ipcRenderer.invoke('device:start', p),
+  deviceStop:   id => ipcRenderer.invoke('device:stop', id),
+  deviceWrite:  w  => ipcRenderer.invoke('device:write', w),
+  onDeviceData:   fn => ipcRenderer.on('device:data',   (_e, d) => fn(d)),
+  onDeviceStatus: fn => ipcRenderer.on('device:status', (_e, s) => fn(s)),
+  onDeviceLog:    fn => ipcRenderer.on('device:log',    (_e, l) => fn(l)),
 })
