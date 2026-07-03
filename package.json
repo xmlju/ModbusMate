@@ -37,6 +37,7 @@
       "output": "release"
     },
     "asar": true,
+    "npmRebuild": false,
     "win": {
       "target": [
         {
