@@ -26,9 +26,38 @@
   "build": {
     "appId": "com.yaominghua.modbusmate",
     "productName": "Modbus 设备调试器",
-    "files": ["main/**", "renderer/**", "preload.js", "package.json"],
-    "directories": { "output": "release" },
-    "win": { "target": ["nsis", "portable"] },
-    "mac": { "target": "dmg" }
+    "files": [
+      "main/**",
+      "renderer/**",
+      "preload.js",
+      "package.json"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "asar": true,
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    },
+    "portable": {
+      "artifactName": "${productName}-便携版-${version}.${ext}"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["x64", "arm64"]
+        }
+      ]
+    }
   }
 }

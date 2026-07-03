@@ -113,6 +113,9 @@ async function startApp() {
   initTheme(cfg.theme || 'dark')
   // 绑定下拉切换
   $('themeSelect').addEventListener('change', () => applyTheme($('themeSelect').value))
+
+  // ── 开发者署名点击 ──
+  $('appFooter').addEventListener('click', () => alert('联系方式：yaomh592@gmail.com'))
 }
 
 // ── 导航页切换 ──
