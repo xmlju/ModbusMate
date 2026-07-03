@@ -22,4 +22,9 @@ contextBridge.exposeInMainWorld('api', {
   onDeviceData:   fn => ipcRenderer.on('device:data',   (_e, d) => fn(d)),
   onDeviceStatus: fn => ipcRenderer.on('device:status', (_e, s) => fn(s)),
   onDeviceLog:    fn => ipcRenderer.on('device:log',    (_e, l) => fn(l)),
+
+  // 设备图片
+  copyImage: (srcPath) => ipcRenderer.invoke('copy-image', srcPath),
+  readImage: (relativePath) => ipcRenderer.invoke('read-image', relativePath),
+  saveImage: (dataUrl) => ipcRenderer.invoke('save-image', dataUrl),
 })

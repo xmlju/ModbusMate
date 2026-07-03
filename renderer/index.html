@@ -258,6 +258,29 @@
     </div>
   </div>
 
+  <!-- ── 图片裁剪弹窗 ── -->
+  <div id="cropModal" class="overlay hidden">
+    <div class="modal-box" style="width:480px;text-align:left">
+      <h3>裁剪设备图片</h3>
+      <p class="hint">拖动图片定位裁剪区域（1:1 正方形），选择输出尺寸后确认</p>
+      <div id="cropContainer" style="position:relative;width:400px;height:300px;margin:10px auto;overflow:hidden;background:var(--surface-2);border-radius:6px;cursor:grab">
+        <img id="cropImage" style="position:absolute;top:0;left:0;max-width:none;user-select:none;-webkit-user-drag:none">
+        <div id="cropOverlay" style="position:absolute;inset:0;pointer-events:none;box-shadow:0 0 0 9999px rgba(0,0,0,.5);border:2px solid #fff;border-radius:2px"></div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:center;margin:10px 0">
+        <button class="btn ghost sm crop-size-btn" data-size="32">32×32</button>
+        <button class="btn ghost sm crop-size-btn" data-size="64">64×64</button>
+        <button class="btn ghost sm crop-size-btn active" data-size="128">128×128</button>
+        <button class="btn ghost sm crop-size-btn" data-size="256">256×256</button>
+      </div>
+      <div id="cropError" class="error-text"></div>
+      <div class="modal-btns">
+        <button id="cropCancel" class="btn secondary">取消</button>
+        <button id="cropConfirm">确认裁剪</button>
+      </div>
+    </div>
+  </div>
+
   <script src="codec.js"></script>
   <script src="read-plan.js"></script>
   <script src="seed-data.js"></script>

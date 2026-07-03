@@ -113,6 +113,67 @@ async function startApp() {
   initTheme(cfg.theme || 'dark')
   // 绑定下拉切换
   $('themeSelect').addEventListener('change', () => applyTheme($('themeSelect').value))
+
+  // ── 裁剪弹窗交互 ──
+  const cropContainer = $('cropContainer')
+  let cropDragState = null
+  cropContainer.addEventListener('mousedown', (e) => {
+    if (e.target !== $('cropImage')) return
+    cropDragState = { startX: e.clientX, startY: e.clientY, origX: DeviceUI.cropState.imgX, origY: DeviceUI.cropState.imgY }
+    cropContainer.style.cursor = 'grabbing'
+  })
+  document.addEventListener('mousemove', (e) => {
+    if (!cropDragState) return
+    const dx = e.clientX - cropDragState.startX
+     const dy = e.clientY - cropDragState.startY
+     DeviceUI.cropState.imgX = cropDragState.origX + dx
+     DeviceUI.cropState.imgY = cropDragState.origY + dy
+     DeviceUI.updateCropDisplay()
+  })
+  document.addEventListener('mouseup', () => {
+    if (cropDragState) { cropDragState = null; cropContainer.style.cursor = 'grab' }
+  })
+  // 预设尺寸按钮
+  document.querySelectorAll('.crop-size-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.crop-size-btn').forEach(b => b.classList.remove('active'))
+      btn.classList.add('active')
+      DeviceUI.cropState.outputSize = Number(btn.dataset.size)
+    })
+  })
+  // 确认裁剪
+  $('cropConfirm').addEventListener('click', () => {
+    const overlay = $('cropOverlay')
+    const info = overlay._cropInfo
+    if (!info || info.side < 2) { $('cropError').textContent = '图片未完全覆盖裁剪区域，请拖动调整'; return }
+    const canvas = document.createElement('canvas')
+    canvas.width = DeviceUI.cropState.outputSize
+    canvas.height = DeviceUI.cropState.outputSize
+    const ctx = canvas.getContext('2d')
+    // 计算缩放比例
+    const img = $('cropImage')
+    if (!img.complete || img.naturalWidth === 0) { $('cropError').textContent = '图片未加载完成'; return }
+    const scale = img.naturalWidth / img.width
+    const srcX = info.imgX * scale
+    const srcY = info.imgY * scale
+    const srcSide = info.side * scale
+    ctx.drawImage(img, srcX, srcY, srcSide, srcSide, 0, 0, DeviceUI.cropState.outputSize, DeviceUI.cropState.outputSize)
+    const outDataUrl = canvas.toDataURL('image/png')
+    window.api.saveImage(outDataUrl).then(path => {
+      DeviceUI.cropState.pendingImagePath = path
+      $('instImagePreview').src = outDataUrl
+      $('instImagePreviewRow').style.display = ''
+      $('cropModal').classList.add('hidden')
+      $('cropImage').src = ''
+    }).catch(err => { $('cropError').textContent = '保存失败: ' + err.message })
+  })
+  // 取消裁剪
+  $('cropCancel').addEventListener('click', () => {
+    $('cropModal').classList.add('hidden')
+    $('cropImage').src = ''
+    // 清空文件选择
+    $('instImageInput').value = ''
+  })
 }
 
 // ── 导航页切换 ──

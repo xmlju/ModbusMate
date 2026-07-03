@@ -17,8 +17,8 @@ const DeviceUI = (() => {
   let nextId = 1
   function genId() { return `dev${nextId++}` }
 
-  // 设备图片暂存路径（新选择或被编辑的）
-  let _pendingImagePath = ''
+  // ── 裁剪状态（app.js 通过 DeviceUI.cropState 读写）──
+  const cropState = { imgX: 0, imgY: 0, outputSize: 128, pendingImagePath: '' }
 
   function getWords(area, type) {
     if (area === 'coil' || area === 'discrete') return 1
@@ -122,7 +122,6 @@ const DeviceUI = (() => {
   function renderOverviewPage() {
     const content = $('ovContent')
     if (!content) return
-    const activeInsts = state.instances.filter(inst => state.running[inst.id])
     if (state.instances.length === 0) {
       content.innerHTML = '<div class="dev-empty-page"><p>暂无设备实例</p><button class="btn" id="ovFirstAddBtn2">＋ 添加第一台设备</button></div>'
       const btn = content.querySelector('#ovFirstAddBtn2')
@@ -132,17 +131,14 @@ const DeviceUI = (() => {
       })
       return
     }
-    if (activeInsts.length === 0) {
-      content.innerHTML = '<div class="dev-empty-page"><p>所有设备已停止</p><p style="font-size:12px">在左侧实例列表点击「启动」开始采集</p></div>'
-      return
-    }
     let html = ''
-    activeInsts.forEach(inst => {
+    state.instances.forEach(inst => {
       const type = state.types.find(t => t.id === inst.typeId)
+      const running = state.running[inst.id]
       const status = state.statuses[inst.id] || 'disconnected'
-      const offline = status === 'offline' || status === 'disconnected' || status === 'error'
-      const statusDot = status === 'connected' ? 'good' : status === 'offline' ? 'warn' : status === 'error' ? 'crit' : 'idle'
-      const statusText = status === 'connected' ? '在线' : status === 'offline' ? '离线·重连中' : status === 'error' ? '连接失败' : '未启动'
+      const offline = !running || status === 'offline' || status === 'disconnected' || status === 'error'
+      const statusDot = !running ? 'idle' : status === 'connected' ? 'good' : status === 'offline' ? 'warn' : 'crit'
+      const statusText = !running ? '已停止' : status === 'connected' ? '在线' : status === 'offline' ? '离线·重连中' : '连接失败'
       const thumbHtml = inst.imagePath
         ? `<img class="dev-thumb-img" data-path="${escapeHtml(inst.imagePath)}">`
         : `<span class="dev-thumb-placeholder">No img</span>`
@@ -153,7 +149,7 @@ const DeviceUI = (() => {
           <span class="dev-name">${escapeHtml(inst.name)}</span>
           <span class="dev-meta">${escapeHtml(inst.host)}:${inst.port} · 从站${inst.unitId} · 周期 ${inst.interval}ms</span>
           <span class="pill"><span class="dot ${statusDot}"></span>${statusText}</span>
-          <button class="btn ghost sm dev-toggle-ov" data-id="${inst.id}">${offline ? '▶ 启动' : '⏸ 停止'}</button>
+          <button class="btn ghost sm dev-toggle-ov" data-id="${inst.id}">${running ? '⏸ 停止' : '▶ 启动'}</button>
         </div>
         <div class="dev-body" id="ovBody_${inst.id}"></div>
       </section>`
@@ -178,8 +174,8 @@ const DeviceUI = (() => {
         window.api.readImage(path).then(dataUrl => { img.src = dataUrl }).catch(() => {})
       }
     })
-    // 渲染每设备卡片
-    activeInsts.forEach(inst => renderInstanceCards(inst.id))
+    // 渲染每设备卡片（仅运行中实例有数据）
+    state.instances.filter(inst => state.running[inst.id]).forEach(inst => renderInstanceCards(inst.id))
     // 更新在线/离线计数
     if (window.updateOnlineOfflinePills) window.updateOnlineOfflinePills()
   }
@@ -414,7 +410,7 @@ const DeviceUI = (() => {
   // ── 实例管理弹窗 ──
   function openInstanceModal() {
     if (state.types.length === 0) { log('error', '请先创建设备类型'); return }
-    _pendingImagePath = ''
+    cropState.pendingImagePath = ''
     const overlay = $('instanceModal'); overlay.classList.remove('hidden')
     const sel = $('instTypeSel')
     sel.innerHTML = state.types.map(t => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join('')
@@ -426,23 +422,8 @@ const DeviceUI = (() => {
     $('instImagePreviewRow').style.display = 'none'
     $('instImagePreview').src = ''
     $('instImageInput').value = ''
-    // 图片选择
-    $('instImageInput').onchange = async () => {
-      const file = $('instImageInput').files[0]
-      if (!file) return
-      try {
-        // 临时预览
-        const reader = new FileReader()
-        reader.onload = (e) => { $('instImagePreview').src = e.target.result; $('instImagePreviewRow').style.display = '' }
-        reader.readAsDataURL(file)
-        // 上传到 userData/images/
-        const srcPath = file.path || file.name  // Electron 的 file input 提供 .path
-        _pendingImagePath = srcPath ? await window.api.copyImage(srcPath) : ''
-      } catch (e) {
-        console.error('图片处理失败', e)
-        _pendingImagePath = ''
-      }
-    }
+    // 图片选择（用共享处理器）
+    $('instImageInput').onchange = () => handleImageSelection()
     $('instModalOk').onclick = async () => {
       const name = $('instName').value.trim(); const host = $('instHost').value.trim()
       const port = Number($('instPort').value); const unitId = Number($('instUnitId').value)
@@ -452,7 +433,7 @@ const DeviceUI = (() => {
       if (!Number.isInteger(port) || port < 1 || port > 65535) { $('instModalError').textContent = '端口范围 1~65535'; return }
       if (!Number.isInteger(unitId) || unitId < 0 || unitId > 255) { $('instModalError').textContent = '从站 ID 范围 0~255'; return }
       if (![100, 500, 1000, 2000, 5000, 10000].includes(interval)) { $('instModalError').textContent = '周期值无效'; return }
-      state.instances.push({ id: genId(), typeId, name, host, port, unitId, interval, imagePath: _pendingImagePath })
+      state.instances.push({ id: genId(), typeId, name, host, port, unitId, interval, imagePath: cropState.pendingImagePath })
       await saveToConfig(); closeInstanceModal(); renderMgrPage(); renderOverviewPage()
       log('info', `已添加设备实例「${name}」`)
       // 跳转到管理页让用户看到实例
@@ -469,7 +450,7 @@ const DeviceUI = (() => {
     const inst = state.instances.find(i => i.id === id)
     if (!inst) { alert('未找到实例'); return }
     if (state.running[id]) { alert('请先停止设备再编辑'); return }
-    _pendingImagePath = ''
+    cropState.pendingImagePath = ''
     const overlay = $('instanceModal'); overlay.classList.remove('hidden')
     const sel = $('instTypeSel')
     sel.innerHTML = state.types.map(t => `<option value="${t.id}" ${t.id === inst.typeId ? 'selected' : ''}>${escapeHtml(t.name)}</option>`).join('')
@@ -489,20 +470,8 @@ const DeviceUI = (() => {
       $('instImagePreview').src = ''
     }
     $('instImageInput').value = ''
-    $('instImageInput').onchange = async () => {
-      const file = $('instImageInput').files[0]
-      if (!file) return
-      try {
-        const reader = new FileReader()
-        reader.onload = (e) => { $('instImagePreview').src = e.target.result; $('instImagePreviewRow').style.display = '' }
-        reader.readAsDataURL(file)
-        const srcPath = file.path || file.name
-        _pendingImagePath = srcPath ? await window.api.copyImage(srcPath) : ''
-      } catch (e) {
-        console.error('图片处理失败', e)
-        _pendingImagePath = ''
-      }
-    }
+    // 图片选择（用共享处理器）
+    $('instImageInput').onchange = () => handleImageSelection()
     $('instModalOk').onclick = async () => {
       const name = $('instName').value.trim(); const host = $('instHost').value.trim()
       const port = Number($('instPort').value); const unitId = Number($('instUnitId').value)
@@ -513,12 +482,84 @@ const DeviceUI = (() => {
       if (!Number.isInteger(unitId) || unitId < 0 || unitId > 255) { $('instModalError').textContent = '从站 ID 范围 0~255'; return }
       if (![100, 500, 1000, 2000, 5000, 10000].includes(interval)) { $('instModalError').textContent = '周期值无效'; return }
       Object.assign(inst, { typeId, name, host, port, unitId, interval })
-      if (_pendingImagePath) inst.imagePath = _pendingImagePath
+      if (cropState.pendingImagePath) inst.imagePath = cropState.pendingImagePath
       await saveToConfig(); closeInstanceModal(); renderMgrPage(); renderOverviewPage()
       log('info', `已更新设备实例「${name}」`)
       if (window.populateDeviceDebugSel) window.populateDeviceDebugSel()
     }
   }
+
+  // ── 图片选择：类型/大小过滤 → 若需要则裁剪 ──
+  function handleImageSelection() {
+    const file = $('instImageInput').files[0]
+    if (!file) return
+    const ALLOWED = ['image/png', 'image/jpeg', 'image/gif', 'image/webp']
+    if (!ALLOWED.includes(file.type)) { alert('仅支持 PNG/JPEG/GIF/WebP 格式'); $('instImageInput').value = ''; return }
+    if (file.size > 5 * 1024 * 1024) { alert('图片超过 5MB，请选择更小的图片'); $('instImageInput').value = ''; return }
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const dataUrl = e.target.result
+      const img = new Image()
+      img.onload = () => {
+        if (img.width > 200 || img.height > 200) {
+          openCropModal(dataUrl)
+        } else {
+          // 小图直接保存
+          window.api.saveImage(dataUrl).then(path => {
+            cropState.pendingImagePath = path
+            $('instImagePreview').src = dataUrl
+            $('instImagePreviewRow').style.display = ''
+          }).catch(() => { alert('图片保存失败') })
+        }
+      }
+      img.src = dataUrl
+    }
+    reader.readAsDataURL(file)
+  }
+
+  function openCropModal(dataUrl) {
+    cropState.outputSize = 128
+    cropState.imgX = 0; cropState.imgY = 0
+    const modal = $('cropModal'); modal.classList.remove('hidden')
+    const img = $('cropImage'); const container = $('cropContainer')
+    $('cropError').textContent = ''
+    document.querySelectorAll('.crop-size-btn').forEach(b => b.classList.toggle('active', Number(b.dataset.size) === 128))
+    img.onload = () => {
+      const scale = Math.max(container.clientWidth / img.naturalWidth, container.clientHeight / img.naturalHeight)
+      img.width = Math.round(img.naturalWidth * scale)
+      img.height = Math.round(img.naturalHeight * scale)
+      cropState.imgX = Math.round((container.clientWidth - img.width) / 2)
+      cropState.imgY = Math.round((container.clientHeight - img.height) / 2)
+      updateCropDisplay()
+    }
+    img.src = dataUrl
+  }
+
+  function updateCropDisplay() {
+    const img = $('cropImage'); img.style.left = cropState.imgX + 'px'; img.style.top = cropState.imgY + 'px'
+    const container = $('cropContainer')
+    // 固定中心 1:1 正方形裁剪框
+    const side = Math.min(container.clientWidth - 4, container.clientHeight - 4)
+    const cx = Math.round((container.clientWidth - side) / 2)
+    const cy = Math.round((container.clientHeight - side) / 2)
+    const overlay = $('cropOverlay')
+    overlay.style.left = cx + 'px'; overlay.style.top = cy + 'px'
+    overlay.style.width = side + 'px'; overlay.style.height = side + 'px'
+    // 存储裁切信息供确认时使用
+    const imgLeft = cropState.imgX, imgTop = cropState.imgY
+    const imgRight = imgLeft + $('cropImage').width, imgBottom = imgTop + $('cropImage').height
+    // 实际可见裁切区域（约束在图片可见范围内）
+    const vLeft = Math.max(cx, imgLeft), vTop = Math.max(cy, imgTop)
+    const vRight = Math.min(cx + side, imgRight), vBottom = Math.min(cy + side, imgBottom)
+    const vSide = Math.round(Math.min(vRight - vLeft, vBottom - vTop))
+    if (vSide > 0) {
+      overlay._cropInfo = { imgX: vLeft - imgLeft, imgY: vTop - imgTop, side: vSide }
+    } else {
+      overlay._cropInfo = { imgX: 0, imgY: 0, side: 1 }
+    }
+  }
+
+  function closeCropModal() { $('cropModal').classList.add('hidden'); $('cropImage').src = '' }
 
   // ── 初始化（IPC 监听）──
   function init() {
@@ -545,6 +586,12 @@ const DeviceUI = (() => {
     openInstanceModal,
     openTypeEditor,
     openTypeEditorForNew,
+    // 裁剪状态引用（app.js 通过 DeviceUI.cropState 读写）
+    cropState,
+    updateCropDisplay,
+    closeCropModal,
+    openCropModal,
+    handleImageSelection,
   }
 })()
 window.DeviceUI = DeviceUI
