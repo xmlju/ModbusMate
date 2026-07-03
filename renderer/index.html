@@ -218,12 +218,12 @@
     <div class="modal-box" style="width:380px">
       <h3>添加设备实例</h3>
       <div class="inst-form">
-        <label><span>实例名</span><input id="instName" placeholder="如 1号电池柜"></label>
-        <label><span>设备类型</span><select id="instTypeSel"></select></label>
-        <label><span>IP</span><input id="instHost" placeholder="192.168.1.10"></label>
-        <label><span>端口</span><input id="instPort" type="number" value="502"></label>
-        <label><span>从站ID</span><input id="instUnitId" type="number" value="1"></label>
-        <label><span>周期</span>
+        <div class="if-row"><span>实例名</span><input id="instName" placeholder="如 1号电池柜"></div>
+        <div class="if-row"><span>设备类型</span><select id="instTypeSel"></select></div>
+        <div class="if-row"><span>IP</span><input id="instHost" placeholder="192.168.1.10"></div>
+        <div class="if-row"><span>端口</span><input id="instPort" type="number" value="502"></div>
+        <div class="if-row"><span>从站ID</span><input id="instUnitId" type="number" value="1"></div>
+        <div class="if-row"><span>周期</span>
           <select id="instInterval">
             <option value="100">100ms</option>
             <option value="500">500ms</option>
@@ -232,7 +232,7 @@
             <option value="5000">5s</option>
             <option value="10000">10s</option>
           </select>
-        </label>
+        </div>
       </div>
       <div id="instModalError" class="error-text"></div>
       <div class="modal-btns">

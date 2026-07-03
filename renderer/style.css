@@ -183,10 +183,10 @@ td select { padding: 2px 4px; margin-right: 4px; background: var(--surface-2); c
 .tfBtn { padding: 2px 10px; font-size: 12px; background: transparent; color: var(--accent); border-color: var(--accent); }
 
 /* ── 实例管理弹窗表单 ── */
-.inst-form { display: grid; grid-template-columns: auto 1fr; gap: 10px 12px; text-align: left; margin: 14px 0; }
-.inst-form label { display: contents; font-size: 13px; color: var(--ink-2); }
-.inst-form label > span { justify-self: end; align-self: center; white-space: nowrap; }
-.inst-form input, .inst-form select { flex: 1; padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-2); color: var(--ink-1); width: 100%; }
+.inst-form { text-align: left; margin: 14px 0; }
+.inst-form .if-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.inst-form .if-row > span { width: 64px; flex-shrink: 0; font-size: 13px; color: var(--ink-2); text-align: right; }
+.inst-form .if-row > input, .inst-form .if-row > select { flex: 1; padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-2); color: var(--ink-1); min-width: 0; }
 
 /* ── 类型管理行 ── */
 #typeList { max-height: 300px; overflow-y: auto; margin: 10px 0; }
