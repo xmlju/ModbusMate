@@ -17,28 +17,9 @@ const isWritableArea = () => state.area === 'coil' || state.area === 'holding'
 // IPC 抛错带 "Error invoking remote method 'xx': Error: " 前缀，剥掉只留业务消息
 const cleanErr = msg => String(msg).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
 
-// ── 入口：先过激活，再进主应用 ──
+// ── 入口：直接进主应用（激活码逻辑已注释禁用）──
 async function init() {
-  if (await window.api.activationStatus()) return startApp()
-  $('activationOverlay').classList.remove('hidden')
-  const input = $('codeInput'), btn = $('activateBtn'), err = $('codeError')
-  input.addEventListener('input', () => {
-    let v = input.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 8)
-    if (v.length > 4) v = v.slice(0, 4) + '-' + v.slice(4)
-    input.value = v
-    err.textContent = ''
-  })
-  btn.addEventListener('click', async () => {
-    btn.disabled = true; btn.textContent = '验证中…'
-    const res = await window.api.activationVerify(input.value)
-    if (res.ok) {
-      $('activationOverlay').classList.add('hidden')
-      startApp()
-    } else {
-      err.textContent = res.error
-      btn.disabled = false; btn.textContent = '激活'
-    }
-  })
+  startApp()
 }
 
 async function startApp() {

@@ -1,31 +1,25 @@
-// test/activation.test.js — activate client verifyToken 纯函数测试
+// test/activation.test.js — 激活验证（当前已注释禁用，简化版测试）
 import { describe, it, expect } from 'vitest'
-import crypto from 'node:crypto'
-import { verifyToken } from '../main/activation.js'
+import { verifyToken, Activation } from '../main/activation.js'
 
-const KEY = 'test-key'
-const makeToken = (code, expires) =>
-  crypto.createHmac('sha256', KEY).update(`${code}.${expires}`).digest('hex')
-const daysFromNow = d => new Date(Date.now() + d * 86400000).toISOString().slice(0, 10)
+describe('verifyToken（简化版，始终返回 true）', () => {
+  it('verifyToken 是函数', () => {
+    expect(typeof verifyToken).toBe('function')
+  })
+  it('任意参数返回 true', () => {
+    expect(verifyToken()).toBe(true)
+    expect(verifyToken(null, null, null, 'key')).toBe(true)
+    expect(verifyToken('x', 'y', 'z', 'key')).toBe(true)
+  })
+})
 
-describe('verifyToken 本地验签', () => {
-  it('合法且未过期通过', () => {
-    const exp = daysFromNow(10)
-    expect(verifyToken('ABCD-2345', makeToken('ABCD-2345', exp), exp, KEY)).toBe(true)
+describe('Activation（简化版，始终已激活）', () => {
+  it('isActivated 始终返回 true', () => {
+    const a = new Activation()
+    expect(a.isActivated()).toBe(true)
   })
-  it('签名不匹配拒绝', () => {
-    const exp = daysFromNow(10)
-    expect(verifyToken('ABCD-2345', 'bad-token', exp, KEY)).toBe(false)
-  })
-  it('过期 3 天（宽限期内）通过', () => {
-    const exp = daysFromNow(-3)
-    expect(verifyToken('ABCD-2345', makeToken('ABCD-2345', exp), exp, KEY)).toBe(true)
-  })
-  it('过期 8 天（超宽限期）拒绝', () => {
-    const exp = daysFromNow(-8)
-    expect(verifyToken('ABCD-2345', makeToken('ABCD-2345', exp), exp, KEY)).toBe(false)
-  })
-  it('缺字段拒绝', () => {
-    expect(verifyToken(null, 'x', daysFromNow(1), KEY)).toBe(false)
+  it('activate 返回 { ok: true }', async () => {
+    const a = new Activation()
+    expect(await a.activate()).toEqual({ ok: true })
   })
 })

@@ -58,8 +58,8 @@ function registerIpc() {
     poller.running ? poller.write(area, addr, words) : service.write(area, addr, words))
   ipcMain.handle('config:load', () => loadConfig())
   ipcMain.handle('config:save', (_e, cfg) => saveConfig(cfg))
-  ipcMain.handle('activation:status', () => activation.isActivated())
-  ipcMain.handle('activation:verify', (_e, code) => activation.activate(code))
+//  ipcMain.handle('activation:status', () => activation.isActivated())
+  //  ipcMain.handle('activation:verify', (_e, code) => activation.activate(code))
 
   poller.on('data', d => send('modbus:data', d))
   poller.on('pollError', msg => send('modbus:log', { level: 'error', message: `读取失败：${msg}` }))
