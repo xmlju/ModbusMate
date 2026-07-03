@@ -15,7 +15,7 @@ const isBitArea = () => state.area === 'coil' || state.area === 'discrete'
 const isWritableArea = () => state.area === 'coil' || state.area === 'holding'
 const cleanErr = msg => String(msg).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
 
-// ── 入口：直接进主应用（激活码逻辑已注释禁用）──
+// ── 入口 ──
 async function init() { startApp() }
 
 async function startApp() {

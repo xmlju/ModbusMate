@@ -1,8 +1,0 @@
-name = "modbusmate-verify"
-main = "index.js"
-compatibility_date = "2024-01-01"
-
-# 如果要用 KV 存储吊销名单，在 Cloudflare Dashboard 创建 KV 后取消注释：
-# [[kv_namespaces]]
-# binding = "MM_KV"
-# id = "你的KV命名空间ID"

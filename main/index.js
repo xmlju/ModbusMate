@@ -5,12 +5,10 @@ const fs = require('fs')
 const ModbusService = require('./modbus-service')
 const Poller = require('./poller')
 const DeviceManager = require('./device-manager')
-const { Activation } = require('./activation')
 
 const service = new ModbusService()
 const poller = new Poller(service)
 const deviceManager = new DeviceManager()
-let activation = null
 let win = null
 
 // ── 崩溃级错误落盘，便于远程排查用户问题 ──
@@ -60,8 +58,6 @@ function registerIpc() {
     poller.running ? poller.write(area, addr, words) : service.write(area, addr, words))
   ipcMain.handle('config:load', () => loadConfig())
   ipcMain.handle('config:save', (_e, cfg) => saveConfig(cfg))
-//  ipcMain.handle('activation:status', () => activation.isActivated())
-  //  ipcMain.handle('activation:verify', (_e, code) => activation.activate(code))
 
   // v0.2 设备采集 IPC
   ipcMain.handle('device:start', (_e, { id, cfg }) => deviceManager.start(id, cfg))
@@ -111,11 +107,10 @@ function registerIpc() {
 }
 
 app.whenReady().then(() => {
-  activation = new Activation(app.getPath('userData'))
   registerIpc()
   createWindow()
 }).catch(err => { console.error(err); app.quit() })
 
 // macOS 惯例：关窗不退出，点 Dock 图标重开窗口；其他平台关窗即退出
 app.on('window-all-closed', () => { deviceManager.stopAll(); if (process.platform !== 'darwin') app.quit() })
-app.on('activate', () => { if (win === null && activation) createWindow() })
+app.on('activate', () => { if (win === null) createWindow() })

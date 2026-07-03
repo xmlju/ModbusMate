@@ -9,8 +9,6 @@ contextBridge.exposeInMainWorld('api', {
   write:            w    => ipcRenderer.invoke('modbus:write', w),
   loadConfig:       ()   => ipcRenderer.invoke('config:load'),
   saveConfig:       c    => ipcRenderer.invoke('config:save', c),
-  activationStatus: () => Promise.resolve(true),
-  activationVerify: () => Promise.resolve({ ok: true }),
   onData:   fn => ipcRenderer.on('modbus:data',   (_e, d) => fn(d)),
   onStatus: fn => ipcRenderer.on('modbus:status', (_e, s) => fn(s)),
   onLog:    fn => ipcRenderer.on('modbus:log',    (_e, l) => fn(l)),
