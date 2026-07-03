@@ -38,18 +38,29 @@
     "asar": true,
     "win": {
       "target": [
-        "nsis",
-        "portable"
-      ]
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "legalTrademarks": "ModbusMate"
     },
     "nsis": {
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true
+      "createDesktopShortcut": true,
+      "runAfterFinish": false,
+      "unicode": true,
+      "artifactName": "${productName}-安装版-${version}-win64.${ext}"
     },
     "portable": {
-      "artifactName": "${productName}-便携版-${version}.${ext}"
+      "artifactName": "${productName}-便携版-${version}-win64.${ext}",
+      "requestExecutionLevel": "user"
     },
     "mac": {
       "target": [
