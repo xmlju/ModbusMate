@@ -237,24 +237,26 @@ const DeviceUI = (() => {
   }
 
   // ── 类型/实例 CRUD ──
-  function deleteType(idx) {
+  async function deleteType(idx) {
     const t = state.types[idx]
     if (!t) return
     const used = state.instances.some(inst => inst.typeId === t.id)
-    if (used) { log('error', `类型「${t.name}」已被实例引用，请先删除相关实例`); return }
+    if (used) { alert(`类型「${t.name}」已被实例引用，请先删除相关实例`); return }
     if (!confirm(`确定删除类型「${t.name}」？`)) return
     state.types.splice(idx, 1)
-    saveToConfig(); renderMgrPage(); renderOverviewPage()
+    await saveToConfig(); renderMgrPage(); renderOverviewPage()
   }
 
-  function deleteInstance(id) {
+  async function deleteInstance(id) {
     const inst = state.instances.find(i => i.id === id)
     if (!inst) return
-    if (state.running[id]) { log('error', '请先停止设备再删除'); return }
+    if (state.running[id]) { alert('请先停止设备再删除'); return }
     if (!confirm(`确定删除实例「${inst.name}」？`)) return
+    // 如有设备管理器实例，停止轮询
+    if (window._appStopInstance) window._appStopInstance(id)
     state.instances = state.instances.filter(i => i.id !== id)
     delete state.running[id]; delete state.statuses[id]; delete state.data[id]
-    saveToConfig(); renderMgrPage(); renderOverviewPage()
+    await saveToConfig(); renderMgrPage(); renderOverviewPage()
   }
 
   function openTypeEditor(idx) {
