@@ -117,3 +117,26 @@ describe('线性公式转换 applyTransform', () => {
     expect(applyTransform('0x00FA', { k: 0.1 })).toBe('0x00FA')
   })
 })
+
+describe('输入防护（质量审查修复）', () => {
+  it('空输入抛错而不是静默写 0', () => {
+    expect(() => encode('', 'uint16')).toThrow('请输入数值')
+    expect(() => encode('   ', 'int32')).toThrow('请输入数值')
+    expect(() => encode(null, 'uint32')).toThrow('请输入数值')
+  })
+  it('Infinity 不允许写入', () => {
+    expect(() => encode('Infinity', 'float32')).toThrow('请输入数字')
+  })
+  it('未知区域类型抛错而不是产出 NaN 地址', () => {
+    expect(() => toPlcAddress(0, 'foo')).toThrow('未知区域')
+    expect(() => toProtocolAddress(40001, 'foo')).toThrow('未知区域')
+  })
+  it('非法寄存器值解码返回 null 而不是乱码', () => {
+    expect(decode([-5], 0, 'hex')).toBe(null)
+    expect(decode([12.7], 0, 'uint16')).toBe(null)
+  })
+  it('边界值编解码往返：-32768 与 65535', () => {
+    expect(decode(encode('-32768', 'int16'), 0, 'int16')).toBe(-32768)
+    expect(decode(encode('65535', 'uint16'), 0, 'uint16')).toBe(65535)
+  })
+})

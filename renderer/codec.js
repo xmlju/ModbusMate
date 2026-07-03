@@ -20,7 +20,8 @@ const Codec = (() => {
   // registers: 16 位原始值数组；offset: 行下标；wordOrder: 'AB' 高字在前 / 'BA' 低字在前
   function decode(registers, offset, type, wordOrder = 'AB') {
     const w0 = registers[offset]
-    if (w0 === undefined) return null
+    // 非法寄存器值（非 0~65535 整数）返回 null，避免渲染成乱码
+    if (typeof w0 !== 'number' || !Number.isInteger(w0) || w0 < 0 || w0 > 0xFFFF) return null
     switch (type) {
       case 'uint16': return w0
       case 'int16':  return w0 > 0x7FFF ? w0 - 0x10000 : w0
@@ -43,6 +44,8 @@ const Codec = (() => {
 
   // 返回待写入的 16 位字数组（长度 1 或 2）
   function encode(value, type, wordOrder = 'AB') {
+    // 空输入防护：Number('') === 0，不拦截会把空输入当 0 写进设备
+    if (value === null || value === undefined || String(value).trim() === '') throw new Error('请输入数值')
     switch (type) {
       case 'uint16': {
         const n = Number(value)
@@ -63,7 +66,7 @@ const Codec = (() => {
       case 'int32':
       case 'float32': {
         const n = Number(value)
-        if (Number.isNaN(n)) throw new Error('请输入数字')
+        if (!Number.isFinite(n)) throw new Error('请输入数字')
         const buf = new DataView(new ArrayBuffer(4))
         if (type === 'float32') {
           buf.setFloat32(0, n)
@@ -84,10 +87,12 @@ const Codec = (() => {
   const PLC_BASE = { coil: 1, discrete: 10001, input: 30001, holding: 40001 }
 
   function toPlcAddress(protocolAddr, area) {
+    if (!(area in PLC_BASE)) throw new Error(`未知区域类型: ${area}`)
     return PLC_BASE[area] + protocolAddr
   }
 
   function toProtocolAddress(plcAddr, area) {
+    if (!(area in PLC_BASE)) throw new Error(`未知区域类型: ${area}`)
     const p = plcAddr - PLC_BASE[area]
     if (p < 0 || p > 65535) throw new Error(`地址超出${area === 'holding' ? '保持寄存器' : area === 'input' ? '输入寄存器' : area === 'coil' ? '线圈' : '离散输入'}区域范围`)
     return p
