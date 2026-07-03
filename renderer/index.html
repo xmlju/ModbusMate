@@ -25,14 +25,16 @@
 
     <!-- 主区 -->
     <main class="main">
-      <!-- 右上角主题切换 -->
-      <div class="theme-corner">
-        <span class="theme-label">显示模式</span>
-        <select id="themeSelect">
-          <option value="dark">🌙 深色</option>
-          <option value="system">💻 跟随系统</option>
-          <option value="light">☀️ 浅色</option>
-        </select>
+      <!-- 全局顶栏：显示模式固定在右上，不与页面内容重叠 -->
+      <div class="app-bar">
+        <div class="theme-corner">
+          <span class="theme-label">显示模式</span>
+          <select id="themeSelect">
+            <option value="dark">🌙 深色</option>
+            <option value="system">💻 跟随系统</option>
+            <option value="light">☀️ 浅色</option>
+          </select>
+        </div>
       </div>
 
       <!-- ═══ 页1：设备总览 ═══ -->
