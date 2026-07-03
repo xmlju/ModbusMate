@@ -26,13 +26,13 @@ body { background: var(--page); color: var(--ink-2); font: 13px/1.5 system-ui, -
 .nav { width: 200px; min-width: 200px; background: var(--surface); border-right: 1px solid var(--border); padding: 16px 10px; display: flex; flex-direction: column; overflow-y: auto; }
 .brand { color: var(--ink-1); font-size: 15px; font-weight: 600; padding: 4px 10px 16px; }
 .brand small { display: block; color: var(--ink-3); font-weight: 400; font-size: 11px; margin-top: 2px; }
-.nav-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 6px; color: var(--ink-2); cursor: pointer; margin-bottom: 2px; user-select: none; }
+.nav-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 6px; color: var(--ink-2); cursor: pointer; margin-bottom: 2px; user-select: none; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .nav-item.active { background: rgba(57,135,229,.15); color: var(--ink-1); box-shadow: inset 2px 0 0 var(--accent); }
 .nav-item:hover { background: var(--surface-2); }
-.main { flex: 1; padding: 0 24px 24px; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
+.main { flex: 1; padding: 0 24px 24px; min-width: 0; display: flex; flex-direction: column; }
 
 /* ── 页面容器 ── */
-.page { display: none; flex: 1; flex-direction: column; overflow: hidden; }
+.page { display: none; flex: 1; flex-direction: column; overflow-y: auto; }
 .page.active { display: flex; }
 
 /* ── 顶栏 ── */
@@ -68,28 +68,30 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .bar { display: flex; align-items: center; gap: 12px; padding: 8px 12px; background: var(--surface); border-bottom: 1px solid var(--border); flex-wrap: wrap; flex-shrink: 0; }
 .bar label { display: flex; align-items: center; gap: 4px; white-space: nowrap; color: var(--ink-2); font-size: 13px; }
 .bar input, .bar select { padding: 4px 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-2); color: var(--ink-1); width: 90px; }
-#host { width: 130px; }
+.bar input[type="number"] { width: 72px; }
+#host { width: 145px; min-width: 0; }
 .right { margin-left: auto; }
 
 /* ── 设备组卡（设备总览页） ── */
 .dev-group { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 20px; overflow: hidden; flex-shrink: 0; }
 .dev-group.offline { border-left: 3px solid var(--status-critical); }
 .dev-group.offline .dev-body { opacity: .45; }
-.dev-head { display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: var(--surface-2); border-bottom: 1px solid var(--border); }
-.dev-name { color: var(--ink-1); font-size: 15px; font-weight: 600; }
-.dev-meta { color: var(--ink-3); font-size: 12px; font-family: var(--mono); }
+.dev-head { display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: var(--surface-2); border-bottom: 1px solid var(--border); flex-wrap: nowrap; min-width: 0; }
+.dev-name { color: var(--ink-1); font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.dev-meta { color: var(--ink-3); font-size: 12px; font-family: var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .dev-head .pill { margin-left: auto; }
 .dev-body { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; padding: 16px; }
 
 /* ── 设备总览空态 ── */
-.dev-empty-page { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; color: var(--ink-3); gap: 16px; padding: 40px; }
+.dev-empty-page { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; color: var(--ink-3); gap: 16px; padding: 40px; min-height: 200px; }
 .dev-empty-page p { font-size: 14px; }
+#ovContent { overflow-y: auto; flex: 1; min-height: 0; }
 
 /* ── Stat Tile（点位卡片，设备总览） ── */
 .tile { background: var(--page); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; transition: box-shadow .6s; }
 .tile.flash { box-shadow: 0 0 0 2px var(--accent); transition: none; }
-.tile-name { font-size: 13px; color: var(--ink-2); margin-bottom: 6px; }
-.tile-value { font-size: 28px; font-weight: 600; color: var(--ink-1); line-height: 1.2; font-variant-numeric: tabular-nums; }
+.tile-name { font-size: 13px; color: var(--ink-2); margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile-value { font-size: 28px; font-weight: 600; color: var(--ink-1); line-height: 1.2; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tile-unit { font-size: 14px; color: var(--ink-3); margin-left: 4px; font-weight: 400; }
 .tile-bar { height: 6px; background: var(--surface-2); border-radius: 3px; margin-top: 10px; overflow: hidden; }
 .tile-bar > i { display: block; height: 100%; background: var(--accent); border-radius: 3px; transition: width .3s; }
@@ -98,7 +100,8 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 20px; flex-shrink: 0; display: flex; flex-direction: column; }
 .panel-head { display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: var(--surface-2); border-bottom: 1px solid var(--border); }
 .panel-head .pill { margin-left: auto; }
-.panel-scroll { overflow-x: auto; flex: 1; }
+.panel-scroll { overflow: auto; flex: 1; }
+#ddContent { overflow-y: auto; flex: 1; min-height: 0; }
 
 /* ── 表格系统 ── */
 table { width: 100%; border-collapse: collapse; }
@@ -191,7 +194,7 @@ td select { padding: 2px 4px; margin-right: 4px; background: var(--surface-2); c
 .type-mgr-row button { font-size: 12px; padding: 2px 8px; }
 
 /* ── 类型点位编辑表格 ── */
-.type-points-table-wrap { max-height: 320px; overflow-y: auto; margin: 10px 0; }
+.type-points-table-wrap { max-height: 320px; overflow: auto; margin: 10px 0; }
 .type-points-table-wrap table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .type-points-table-wrap th, .type-points-table-wrap td { padding: 4px 6px; border: 1px solid var(--border); text-align: left; white-space: nowrap; }
 .type-points-table-wrap th { background: var(--surface-2); position: sticky; top: 0; color: var(--ink-2); }
