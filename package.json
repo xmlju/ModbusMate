@@ -18,5 +18,13 @@
     "electron": "^35.0.0",
     "electron-builder": "^25.1.8",
     "vitest": "^3.0.0"
+  },
+  "build": {
+    "appId": "com.yaominghua.modbusmate",
+    "productName": "ModbusMate",
+    "files": ["main/**", "renderer/**", "preload.js", "package.json"],
+    "directories": { "output": "release" },
+    "win": { "target": ["nsis", "portable"] },
+    "mac": { "target": "dmg" }
   }
 }
