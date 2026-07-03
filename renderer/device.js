@@ -6,7 +6,7 @@ const DeviceUI = (() => {
   // ── 数据状态 ──
   const state = {
     types: [],        // [{ id, name, points: [...] }]
-    instances: [],    // [{ id, typeId, name, host, port, unitId, interval, imagePath }]
+    instances: [],    // [{ id, typeId, name, host, port, unitId, interval, iconIdx }]
     running: {},      // id → true/false
     data: {},         // id → blocks（最新采集数据）
     statuses: {},     // id → 'connected'|'offline'|'disconnected'|'error'
@@ -17,8 +17,22 @@ const DeviceUI = (() => {
   let nextId = 1
   function genId() { return `dev${nextId++}` }
 
-  // ── 裁剪状态（app.js 通过 DeviceUI.cropState 读写）──
-  const cropState = { imgX: 0, imgY: 0, outputSize: 128, pendingImagePath: '' }
+  // ── 预设设备图标（SVG data URI, 32x32）──
+  const PRESET_ICONS = [
+    // 0: 电池柜 — 电池图标
+    'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect x="8" y="4" width="16" height="24" rx="2" fill="none" stroke="#3987e5" stroke-width="2"/><rect x="12" y="8" width="3" height="6" rx="1" fill="#0ca30c"/><rect x="17" y="8" width="3" height="6" rx="1" fill="#0ca30c"/><rect x="12" y="16" width="3" height="6" rx="1" fill="#0ca30c"/><rect x="17" y="16" width="3" height="6" rx="1" fill="#0ca30c"/><rect x="13" y="2" width="6" height="3" rx="1" fill="#3987e5"/></svg>'),
+    // 1: PLC 控制器 — 齿轮/控制面板
+    'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect x="4" y="6" width="24" height="20" rx="3" fill="none" stroke="#3987e5" stroke-width="1.8"/><rect x="8" y="10" width="5" height="5" rx="1" fill="#0ca30c"/><rect x="8" y="18" width="5" height="5" rx="1" fill="#fab219"/><rect x="16" y="10" width="8" height="2" rx="1" fill="#c3c2b7"/><rect x="16" y="14" width="8" height="2" rx="1" fill="#c3c2b7"/><rect x="16" y="18" width="8" height="2" rx="1" fill="#c3c2b7"/><rect x="16" y="22" width="8" height="2" rx="1" fill="#c3c2b7"/></svg>'),
+    // 2: 温控器 — 温度计
+    'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect x="13" y="2" width="6" height="20" rx="3" fill="none" stroke="#3987e5" stroke-width="1.8"/><circle cx="16" cy="25" r="5" fill="none" stroke="#d03b3b" stroke-width="1.8"/><circle cx="16" cy="25" r="2.5" fill="#d03b3b"/><rect x="10" y="12" width="12" height="2" rx="1" fill="#c3c2b7"/><rect x="10" y="16" width="8" height="2" rx="1" fill="#c3c2b7"/></svg>'),
+    // 3: 服务器 — 机架
+    'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect x="6" y="3" width="20" height="26" rx="2" fill="none" stroke="#3987e5" stroke-width="1.8"/><rect x="9" y="6" width="14" height="4" rx="1" fill="#232322" stroke="#c3c2b7" stroke-width="0.5"/><circle cx="20" cy="8" r="1.5" fill="#0ca30c"/><rect x="9" y="13" width="14" height="4" rx="1" fill="#232322" stroke="#c3c2b7" stroke-width="0.5"/><circle cx="20" cy="15" r="1.5" fill="#0ca30c"/><rect x="9" y="20" width="14" height="4" rx="1" fill="#232322" stroke="#c3c2b7" stroke-width="0.5"/><circle cx="20" cy="22" r="1.5" fill="#fab219"/></svg>'),
+    // 4: 传感器 — 信号/天线
+    'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><circle cx="16" cy="22" r="3" fill="none" stroke="#3987e5" stroke-width="1.8"/><path d="M8 16 Q16 8 24 16" fill="none" stroke="#3987e5" stroke-width="1.5" opacity="0.6"/><path d="M4 12 Q16 2 28 12" fill="none" stroke="#3987e5" stroke-width="1.2" opacity="0.4"/><line x1="16" y1="22" x2="16" y2="8" stroke="#3987e5" stroke-width="1.8"/><circle cx="16" cy="6" r="2" fill="#0ca30c"/></svg>'),
+    // 5: 通用设备 — 芯片/盒子
+    'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect x="6" y="6" width="20" height="20" rx="3" fill="none" stroke="#3987e5" stroke-width="1.8"/><rect x="10" y="10" width="12" height="12" rx="2" fill="none" stroke="#c3c2b7" stroke-width="1"/><circle cx="16" cy="16" r="3" fill="#0ca30c"/><line x1="6" y1="12" x2="2" y2="12" stroke="#3987e5" stroke-width="1.2"/><line x1="6" y1="16" x2="2" y2="16" stroke="#3987e5" stroke-width="1.2"/><line x1="6" y1="20" x2="2" y2="20" stroke="#3987e5" stroke-width="1.2"/><line x1="26" y1="12" x2="30" y2="12" stroke="#3987e5" stroke-width="1.2"/><line x1="26" y1="16" x2="30" y2="16" stroke="#3987e5" stroke-width="1.2"/><line x1="26" y1="20" x2="30" y2="20" stroke="#3987e5" stroke-width="1.2"/></svg>'),
+  ]
+  const PRESET_ICON_LABELS = ['电池柜', 'PLC 控制器', '温控器', '服务器', '传感器', '通用设备']
 
   function getWords(area, type) {
     if (area === 'coil' || area === 'discrete') return 1
@@ -62,6 +76,35 @@ const DeviceUI = (() => {
 
   function escapeHtml(s) {
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+  }
+
+  // ── 获取预设图标 data URI ──
+  function getIconSrc(inst) {
+    const idx = inst.iconIdx != null ? inst.iconIdx : 0
+    return PRESET_ICONS[idx] || PRESET_ICONS[0]
+  }
+
+  // ── 渲染图标选择器 ──
+  function renderIconSelector(selectedIdx) {
+    const container = $('iconSelector')
+    if (!container) return
+    container.innerHTML = PRESET_ICONS.map((svg, i) =>
+      `<div class="icon-opt ${i === selectedIdx ? 'active' : ''}" data-idx="${i}" title="${PRESET_ICON_LABELS[i]}">
+        <img src="${svg}" width="32" height="32" alt="${PRESET_ICON_LABELS[i]}">
+        <span>${PRESET_ICON_LABELS[i]}</span>
+      </div>`
+    ).join('')
+    container.querySelectorAll('.icon-opt').forEach(el => {
+      el.addEventListener('click', () => {
+        container.querySelectorAll('.icon-opt').forEach(o => o.classList.remove('active'))
+        el.classList.add('active')
+      })
+    })
+  }
+
+  function getSelectedIconIdx() {
+    const active = $('iconSelector')?.querySelector('.icon-opt.active')
+    return active ? Number(active.dataset.idx) : 0
   }
 
   // ── 实例启停 ──
@@ -139,9 +182,7 @@ const DeviceUI = (() => {
       const offline = !running || status === 'offline' || status === 'disconnected' || status === 'error'
       const statusDot = !running ? 'idle' : status === 'connected' ? 'good' : status === 'offline' ? 'warn' : 'crit'
       const statusText = !running ? '已停止' : status === 'connected' ? '在线' : status === 'offline' ? '离线·重连中' : '连接失败'
-      const thumbHtml = inst.imagePath
-        ? `<img class="dev-thumb-img" data-path="${escapeHtml(inst.imagePath)}">`
-        : `<span class="dev-thumb-placeholder">No img</span>`
+      const thumbHtml = `<img class="dev-thumb-img" src="${getIconSrc(inst)}">`
       html += `<section class="dev-group ${offline ? 'offline' : ''}" data-inst-id="${inst.id}">
         <div class="dev-head">
           <span class="collapse-toggle" data-inst-id="${inst.id}">▾</span>
@@ -166,13 +207,6 @@ const DeviceUI = (() => {
     // 绑定启停
     content.querySelectorAll('.dev-toggle-ov').forEach(btn => {
       btn.addEventListener('click', () => toggleInstance(btn.dataset.id))
-    })
-    // 异步加载设备图片缩略图
-    content.querySelectorAll('.dev-thumb-img').forEach(img => {
-      const path = img.dataset.path
-      if (path) {
-        window.api.readImage(path).then(dataUrl => { img.src = dataUrl }).catch(() => {})
-      }
     })
     // 渲染每设备卡片（仅运行中实例有数据）
     state.instances.filter(inst => state.running[inst.id]).forEach(inst => renderInstanceCards(inst.id))
@@ -410,7 +444,6 @@ const DeviceUI = (() => {
   // ── 实例管理弹窗 ──
   function openInstanceModal() {
     if (state.types.length === 0) { log('error', '请先创建设备类型'); return }
-    cropState.pendingImagePath = ''
     const overlay = $('instanceModal'); overlay.classList.remove('hidden')
     const sel = $('instTypeSel')
     sel.innerHTML = state.types.map(t => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join('')
@@ -418,12 +451,8 @@ const DeviceUI = (() => {
     $('instPort').value = 502; $('instUnitId').value = 1; $('instInterval').value = 1000
     $('instModalError').textContent = ''
     $('instModalTitle').textContent = '添加设备实例'
-    // 图片预览行隐藏
-    $('instImagePreviewRow').style.display = 'none'
-    $('instImagePreview').src = ''
-    $('instImageInput').value = ''
-    // 图片选择（用共享处理器）
-    $('instImageInput').onchange = () => handleImageSelection()
+    // 渲染图标选择器（默认选中电池柜）
+    renderIconSelector(0)
     $('instModalOk').onclick = async () => {
       const name = $('instName').value.trim(); const host = $('instHost').value.trim()
       const port = Number($('instPort').value); const unitId = Number($('instUnitId').value)
@@ -433,7 +462,7 @@ const DeviceUI = (() => {
       if (!Number.isInteger(port) || port < 1 || port > 65535) { $('instModalError').textContent = '端口范围 1~65535'; return }
       if (!Number.isInteger(unitId) || unitId < 0 || unitId > 255) { $('instModalError').textContent = '从站 ID 范围 0~255'; return }
       if (![100, 500, 1000, 2000, 5000, 10000].includes(interval)) { $('instModalError').textContent = '周期值无效'; return }
-      state.instances.push({ id: genId(), typeId, name, host, port, unitId, interval, imagePath: cropState.pendingImagePath })
+      state.instances.push({ id: genId(), typeId, name, host, port, unitId, interval, iconIdx: getSelectedIconIdx() })
       await saveToConfig(); closeInstanceModal(); renderMgrPage(); renderOverviewPage()
       log('info', `已添加设备实例「${name}」`)
       // 跳转到管理页让用户看到实例
@@ -450,7 +479,6 @@ const DeviceUI = (() => {
     const inst = state.instances.find(i => i.id === id)
     if (!inst) { alert('未找到实例'); return }
     if (state.running[id]) { alert('请先停止设备再编辑'); return }
-    cropState.pendingImagePath = ''
     const overlay = $('instanceModal'); overlay.classList.remove('hidden')
     const sel = $('instTypeSel')
     sel.innerHTML = state.types.map(t => `<option value="${t.id}" ${t.id === inst.typeId ? 'selected' : ''}>${escapeHtml(t.name)}</option>`).join('')
@@ -461,17 +489,8 @@ const DeviceUI = (() => {
     $('instInterval').value = inst.interval
     $('instModalError').textContent = ''
     $('instModalTitle').textContent = '编辑设备实例'
-    // 图片：如有则显示预览
-    if (inst.imagePath) {
-      $('instImagePreviewRow').style.display = ''
-      window.api.readImage(inst.imagePath).then(url => { $('instImagePreview').src = url }).catch(() => { $('instImagePreview').src = '' })
-    } else {
-      $('instImagePreviewRow').style.display = 'none'
-      $('instImagePreview').src = ''
-    }
-    $('instImageInput').value = ''
-    // 图片选择（用共享处理器）
-    $('instImageInput').onchange = () => handleImageSelection()
+    // 图标选择器（选中当前图标）
+    renderIconSelector(inst.iconIdx != null ? inst.iconIdx : 0)
     $('instModalOk').onclick = async () => {
       const name = $('instName').value.trim(); const host = $('instHost').value.trim()
       const port = Number($('instPort').value); const unitId = Number($('instUnitId').value)
@@ -481,85 +500,12 @@ const DeviceUI = (() => {
       if (!Number.isInteger(port) || port < 1 || port > 65535) { $('instModalError').textContent = '端口范围 1~65535'; return }
       if (!Number.isInteger(unitId) || unitId < 0 || unitId > 255) { $('instModalError').textContent = '从站 ID 范围 0~255'; return }
       if (![100, 500, 1000, 2000, 5000, 10000].includes(interval)) { $('instModalError').textContent = '周期值无效'; return }
-      Object.assign(inst, { typeId, name, host, port, unitId, interval })
-      if (cropState.pendingImagePath) inst.imagePath = cropState.pendingImagePath
+      Object.assign(inst, { typeId, name, host, port, unitId, interval, iconIdx: getSelectedIconIdx() })
       await saveToConfig(); closeInstanceModal(); renderMgrPage(); renderOverviewPage()
       log('info', `已更新设备实例「${name}」`)
       if (window.populateDeviceDebugSel) window.populateDeviceDebugSel()
     }
   }
-
-  // ── 图片选择：类型/大小过滤 → 若需要则裁剪 ──
-  function handleImageSelection() {
-    const file = $('instImageInput').files[0]
-    if (!file) return
-    const ALLOWED = ['image/png', 'image/jpeg', 'image/gif', 'image/webp']
-    if (!ALLOWED.includes(file.type)) { alert('仅支持 PNG/JPEG/GIF/WebP 格式'); $('instImageInput').value = ''; return }
-    if (file.size > 5 * 1024 * 1024) { alert('图片超过 5MB，请选择更小的图片'); $('instImageInput').value = ''; return }
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      const dataUrl = e.target.result
-      const img = new Image()
-      img.onload = () => {
-        if (img.width > 200 || img.height > 200) {
-          openCropModal(dataUrl)
-        } else {
-          // 小图直接保存
-          window.api.saveImage(dataUrl).then(path => {
-            cropState.pendingImagePath = path
-            $('instImagePreview').src = dataUrl
-            $('instImagePreviewRow').style.display = ''
-          }).catch(() => { alert('图片保存失败') })
-        }
-      }
-      img.src = dataUrl
-    }
-    reader.readAsDataURL(file)
-  }
-
-  function openCropModal(dataUrl) {
-    cropState.outputSize = 128
-    cropState.imgX = 0; cropState.imgY = 0
-    const modal = $('cropModal'); modal.classList.remove('hidden')
-    const img = $('cropImage'); const container = $('cropContainer')
-    $('cropError').textContent = ''
-    document.querySelectorAll('.crop-size-btn').forEach(b => b.classList.toggle('active', Number(b.dataset.size) === 128))
-    img.onload = () => {
-      const scale = Math.max(container.clientWidth / img.naturalWidth, container.clientHeight / img.naturalHeight)
-      img.width = Math.round(img.naturalWidth * scale)
-      img.height = Math.round(img.naturalHeight * scale)
-      cropState.imgX = Math.round((container.clientWidth - img.width) / 2)
-      cropState.imgY = Math.round((container.clientHeight - img.height) / 2)
-      updateCropDisplay()
-    }
-    img.src = dataUrl
-  }
-
-  function updateCropDisplay() {
-    const img = $('cropImage'); img.style.left = cropState.imgX + 'px'; img.style.top = cropState.imgY + 'px'
-    const container = $('cropContainer')
-    // 固定中心 1:1 正方形裁剪框
-    const side = Math.min(container.clientWidth - 4, container.clientHeight - 4)
-    const cx = Math.round((container.clientWidth - side) / 2)
-    const cy = Math.round((container.clientHeight - side) / 2)
-    const overlay = $('cropOverlay')
-    overlay.style.left = cx + 'px'; overlay.style.top = cy + 'px'
-    overlay.style.width = side + 'px'; overlay.style.height = side + 'px'
-    // 存储裁切信息供确认时使用
-    const imgLeft = cropState.imgX, imgTop = cropState.imgY
-    const imgRight = imgLeft + $('cropImage').width, imgBottom = imgTop + $('cropImage').height
-    // 实际可见裁切区域（约束在图片可见范围内）
-    const vLeft = Math.max(cx, imgLeft), vTop = Math.max(cy, imgTop)
-    const vRight = Math.min(cx + side, imgRight), vBottom = Math.min(cy + side, imgBottom)
-    const vSide = Math.round(Math.min(vRight - vLeft, vBottom - vTop))
-    if (vSide > 0) {
-      overlay._cropInfo = { imgX: vLeft - imgLeft, imgY: vTop - imgTop, side: vSide }
-    } else {
-      overlay._cropInfo = { imgX: 0, imgY: 0, side: 1 }
-    }
-  }
-
-  function closeCropModal() { $('cropModal').classList.add('hidden'); $('cropImage').src = '' }
 
   // ── 初始化（IPC 监听）──
   function init() {
@@ -586,12 +532,6 @@ const DeviceUI = (() => {
     openInstanceModal,
     openTypeEditor,
     openTypeEditorForNew,
-    // 裁剪状态引用（app.js 通过 DeviceUI.cropState 读写）
-    cropState,
-    updateCropDisplay,
-    closeCropModal,
-    openCropModal,
-    handleImageSelection,
   }
 })()
 window.DeviceUI = DeviceUI
