@@ -80,7 +80,27 @@ const Codec = (() => {
     }
   }
 
-  return { TYPES, decode, encode }
+  // PLC 习惯地址基址：线圈 0xxxx（从 1 计）、离散输入 1xxxx、输入寄存器 3xxxx、保持寄存器 4xxxx
+  const PLC_BASE = { coil: 1, discrete: 10001, input: 30001, holding: 40001 }
+
+  function toPlcAddress(protocolAddr, area) {
+    return PLC_BASE[area] + protocolAddr
+  }
+
+  function toProtocolAddress(plcAddr, area) {
+    const p = plcAddr - PLC_BASE[area]
+    if (p < 0 || p > 65535) throw new Error(`地址超出${area === 'holding' ? '保持寄存器' : area === 'input' ? '输入寄存器' : area === 'coil' ? '线圈' : '离散输入'}区域范围`)
+    return p
+  }
+
+  // 线性公式转换：显示值 = k·x + b；decimals 小数位（null=自动）；非数值原样返回
+  function applyTransform(value, { k = 1, b = 0, decimals = null } = {}) {
+    if (typeof value !== 'number') return value
+    const y = k * value + b
+    return decimals === null ? y : Number(y.toFixed(decimals))
+  }
+
+  return { TYPES, decode, encode, toPlcAddress, toProtocolAddress, applyTransform }
 })()
 
 if (typeof module !== 'undefined' && module.exports) module.exports = Codec

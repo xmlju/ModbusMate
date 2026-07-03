@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import Codec from '../renderer/codec.js'
 
-const { decode, encode, TYPES } = Codec
+const { decode, encode, TYPES, toPlcAddress, toProtocolAddress, applyTransform } = Codec
 
 describe('16 位类型解码', () => {
   it('UInt16 原样返回', () => {
@@ -80,5 +80,40 @@ describe('32 位类型编码（字序）', () => {
   })
   it('非数字输入抛错', () => {
     expect(() => encode('abc', 'float32')).toThrow('请输入数字')
+  })
+})
+
+describe('PLC/协议地址换算', () => {
+  it('协议地址 → PLC 习惯地址', () => {
+    expect(toPlcAddress(0, 'coil')).toBe(1)
+    expect(toPlcAddress(0, 'discrete')).toBe(10001)
+    expect(toPlcAddress(9, 'input')).toBe(30010)
+    expect(toPlcAddress(0, 'holding')).toBe(40001)
+    expect(toPlcAddress(99, 'holding')).toBe(40100)
+  })
+  it('PLC 地址 → 协议地址', () => {
+    expect(toProtocolAddress(40001, 'holding')).toBe(0)
+    expect(toProtocolAddress(30010, 'input')).toBe(9)
+  })
+  it('PLC 地址低于区域基址抛错', () => {
+    expect(() => toProtocolAddress(39999, 'holding')).toThrow('超出')
+  })
+})
+
+describe('线性公式转换 applyTransform', () => {
+  it('y = k·x + b', () => {
+    expect(applyTransform(250, { k: 0.1, b: 0 })).toBeCloseTo(25, 6)
+    expect(applyTransform(500, { k: 0.1, b: -40 })).toBeCloseTo(10, 6)
+  })
+  it('小数位控制', () => {
+    expect(applyTransform(333, { k: 1 / 3, b: 0, decimals: 2 })).toBe(111)
+    expect(applyTransform(100, { k: 0.123, b: 0, decimals: 2 })).toBe(12.3)
+  })
+  it('默认参数不改变数值', () => {
+    expect(applyTransform(42, {})).toBe(42)
+    expect(applyTransform(42)).toBe(42)
+  })
+  it('非数值（Hex 字符串）原样返回', () => {
+    expect(applyTransform('0x00FA', { k: 0.1 })).toBe('0x00FA')
   })
 })
