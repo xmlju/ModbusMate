@@ -213,8 +213,8 @@ const DeviceUI = (() => {
           <div class="mgr-row">
             <span class="mgr-name">${escapeHtml(t.name)}</span>
             <span class="mgr-meta">${t.points.length} 个点位</span>
-            <button class="btn ghost sm" onclick="DeviceUI.openTypeEditor(${idx})">编辑</button>
-            <button class="btn ghost sm" style="border-color:var(--status-critical);color:var(--status-critical)" onclick="DeviceUI.deleteType(${idx})">删除</button>
+            <button class="btn ghost sm" data-action="editType" data-idx="${idx}">编辑</button>
+            <button class="btn ghost sm" style="border-color:var(--status-critical);color:var(--status-critical)" data-action="delType" data-idx="${idx}">删除</button>
           </div>`).join('')
       }
     }
@@ -233,8 +233,8 @@ const DeviceUI = (() => {
             <span class="dot ${dotCls}"></span>
             <span class="mgr-name">${escapeHtml(inst.name)}</span>
             <span class="mgr-meta">${type ? escapeHtml(type.name) : '（未知）'} · ${escapeHtml(inst.host)}:${inst.port} · ${running ? '运行中' : '已停止'}</span>
-            <button class="btn ghost sm" onclick="DeviceUI.toggleInstance('${inst.id}')">${running ? '停止' : '启动'}</button>
-            <button class="btn ghost sm" style="border-color:var(--status-critical);color:var(--status-critical)" onclick="DeviceUI.deleteInstance('${inst.id}')">删除</button>
+            <button class="btn ghost sm" data-action="toggleInst" data-id="${inst.id}">${running ? '停止' : '启动'}</button>
+            <button class="btn ghost sm" style="border-color:var(--status-critical);color:var(--status-critical)" data-action="delInst" data-id="${inst.id}">删除</button>
           </div>`
         }).join('')
       }
@@ -410,11 +410,25 @@ const DeviceUI = (() => {
 
   function closeInstanceModal() { $('instanceModal').classList.add('hidden') }
 
-  // ── 初始化（IPC 监听）──
+  // ── 初始化（IPC 监听 + mgr 按钮事件委托）──
   function init() {
     window.api.onDeviceData(onDeviceData)
     window.api.onDeviceStatus(onDeviceStatus)
     window.api.onDeviceLog(onDeviceLog)
+
+    // mgr 页面按钮事件委托（避免 inline onclick 作用域问题）
+     const mgrPage = document.getElementById('mgrPage')
+     if (mgrPage) {
+       mgrPage.addEventListener('click', async e => {
+         const btn = e.target.closest('button[data-action]')
+         if (!btn || !mgrPage.contains(btn)) return
+         const action = btn.dataset.action
+         if (action === 'editType') { openTypeEditor(Number(btn.dataset.idx)); return }
+         if (action === 'delType')  { deleteType(Number(btn.dataset.idx)); return }
+         if (action === 'toggleInst') { toggleInstance(btn.dataset.id); return }
+         if (action === 'delInst')  { deleteInstance(btn.dataset.id); return }
+       })
+     }
   }
 
   function switchToMgrPage() {
