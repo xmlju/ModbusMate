@@ -9,78 +9,151 @@
 <body>
   <!-- 激活遮罩（已注释禁用） -->
   <!--
-  <div id="activationOverlay" class="overlay hidden">
-    ...
-  </div>
+  <div id="activationOverlay" class="overlay hidden">...</div>
   -->
 
-  <!-- 模式切换 Tab -->
-  <div class="mode-tabs">
-    <button id="debugTab" class="mode-tab active">调试</button>
-    <button id="deviceTab" class="mode-tab">设备</button>
+  <div class="shell">
+    <!-- 左侧全局导航 -->
+    <nav class="nav">
+      <div class="brand">ModbusMate<small>企业内部 · Modbus-TCP 监控调试</small></div>
+      <div class="nav-item" data-page="devOverview">📋 设备总览</div>
+      <div class="nav-item" data-page="devDebug">🔧 设备调试</div>
+      <div class="nav-item active" data-page="workbench">🧪 调试工作台</div>
+      <div class="nav-item" data-page="logPage">📜 通信日志</div>
+      <div class="nav-item" data-page="mgrPage">⚙️ 类型/实例管理</div>
+    </nav>
+
+    <!-- 主区 -->
+    <main class="main">
+
+      <!-- ═══ 页1：设备总览 ═══ -->
+      <div id="devOverviewPage" class="page">
+        <div class="topbar">
+          <h1>📋 设备总览</h1>
+          <span class="pill" id="devOnlinePill"><span class="dot good"></span>在线 0</span>
+          <span class="pill" id="devOfflinePill"><span class="dot crit"></span>离线 0</span>
+          <button class="btn" id="ovAddInstBtn">＋ 添加设备</button>
+        </div>
+        <div id="ovContent" style="flex:1;overflow-y:auto">
+          <div class="dev-empty-page">
+            <p>暂无设备实例</p>
+            <button class="btn" id="ovFirstAddBtn">＋ 添加第一台设备</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ 页2：设备调试 ═══ -->
+      <div id="devDebugPage" class="page">
+        <div class="topbar">
+          <h1>🔧 设备调试</h1>
+          <select id="ddDeviceSel" style="padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface-2);color:var(--ink-1);min-width:200px"></select>
+          <span id="ddStatus" class="pill"><span class="dot idle"></span>未选择</span>
+          <span class="dev-meta" id="ddMeta" style="color:var(--ink-3);font-family:var(--mono);font-size:12px"></span>
+          <button class="btn ghost sm" id="ddToggleBtn" style="display:none">停止</button>
+        </div>
+        <!-- 设备调试面板：点位表 + 迷你日志 -->
+        <div id="ddContent" style="flex:1;overflow-y:auto">
+          <div class="dev-empty-page">
+            <p>请从「设备总览」启动一个设备实例后，在此选择查看点位详情</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ 页3：调试工作台（v0.1 全部功能 + 日志栏） ═══ -->
+      <div id="workbenchPage" class="page active">
+        <!-- 连接栏 -->
+        <div class="bar">
+          <label>IP <input id="host" placeholder="192.168.1.10"></label>
+          <label>端口 <input id="port" type="number" value="502"></label>
+          <label>从站ID <input id="unitId" type="number" value="1"></label>
+          <button id="connectBtn">连接</button>
+          <span id="statusDot" class="dot idle"></span>
+          <span id="statusText">未连接</span>
+          <label class="right"><input id="plcMode" type="checkbox" checked> PLC 地址(4xxxx)</label>
+        </div>
+
+        <!-- 监控配置栏 -->
+        <div class="bar">
+          <label>区域
+            <select id="area">
+              <option value="holding" selected>保持寄存器(FC03)</option>
+              <option value="input">输入寄存器(FC04)</option>
+              <option value="coil">线圈(FC01)</option>
+              <option value="discrete">离散输入(FC02)</option>
+            </select>
+          </label>
+          <label>起始地址 <input id="startAddr" type="number" value="0"></label>
+          <label>数量 <input id="count" type="number" value="10" min="1" max="120"></label>
+          <label>周期
+            <select id="interval">
+              <option value="100">100ms</option>
+              <option value="500">500ms</option>
+              <option value="1000" selected>1s</option>
+              <option value="2000">2s</option>
+              <option value="5000">5s</option>
+              <option value="10000">10s</option>
+            </select>
+          </label>
+          <button id="pollBtn">▶ 开始监控</button>
+          <button id="viewBtn">仪表盘</button>
+        </div>
+
+        <!-- 监控表格 -->
+        <div class="table-wrap" id="tableView">
+          <table>
+            <thead><tr><th>地址</th><th>数据类型</th><th>原始值</th><th>解析值</th><th>公式</th><th>操作</th></tr></thead>
+            <tbody id="tbody"></tbody>
+          </table>
+        </div>
+
+        <!-- 仪表盘视图（调试模式） -->
+        <div id="dashView" class="dash-wrap hidden"></div>
+
+        <!-- 日志栏 -->
+        <div id="logPanel">
+          <div id="logToggle" class="log-header">通信日志 ▾</div>
+          <div id="logBox"></div>
+        </div>
+      </div>
+
+      <!-- ═══ 页4：通信日志（全屏） ═══ -->
+      <div id="logPage" class="page">
+        <div class="topbar">
+          <h1>📜 通信日志</h1>
+          <button class="btn ghost" id="logClearBtn">清空</button>
+        </div>
+        <div id="logFull" class="log-full"></div>
+      </div>
+
+      <!-- ═══ 页5：类型/实例管理 ═══ -->
+      <div id="mgrPage" class="page">
+        <div class="topbar">
+          <h1>⚙️ 类型/实例管理</h1>
+          <button class="btn" id="mgrAddTypeBtn">＋ 新建类型</button>
+          <button class="btn ghost" id="mgrAddInstBtn">＋ 添加设备</button>
+        </div>
+        <div class="mgr-page">
+          <!-- 类型列表 -->
+          <div class="mgr-section">
+            <h3>设备类型</h3>
+            <div id="mgrTypeList">
+              <div class="mgr-empty">暂无类型，点击上方「新建类型」创建</div>
+            </div>
+          </div>
+          <!-- 实例列表 -->
+          <div class="mgr-section">
+            <h3>设备实例</h3>
+            <div id="mgrInstList">
+              <div class="mgr-empty">暂无实例，点击上方「添加设备」创建</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </main>
   </div>
 
-  <div id="app" class="hidden">
-    <!-- ── 调试模式（v0.1 全部现状）── -->
-    <div id="debugArea">
-      <!-- 连接栏 -->
-      <div class="bar">
-        <label>IP <input id="host" placeholder="192.168.1.10"></label>
-        <label>端口 <input id="port" type="number" value="502"></label>
-        <label>从站ID <input id="unitId" type="number" value="1"></label>
-        <button id="connectBtn">连接</button>
-        <span id="statusDot" class="dot disconnected"></span>
-        <span id="statusText">未连接</span>
-        <label class="right"><input id="plcMode" type="checkbox" checked> PLC 地址(4xxxx)</label>
-      </div>
-
-      <!-- 监控配置栏 -->
-      <div class="bar">
-        <label>区域
-          <select id="area">
-            <option value="holding" selected>保持寄存器(FC03)</option>
-            <option value="input">输入寄存器(FC04)</option>
-            <option value="coil">线圈(FC01)</option>
-            <option value="discrete">离散输入(FC02)</option>
-          </select>
-        </label>
-        <label>起始地址 <input id="startAddr" type="number" value="0"></label>
-        <label>数量 <input id="count" type="number" value="10" min="1" max="120"></label>
-        <label>周期
-          <select id="interval">
-            <option value="100">100ms</option>
-            <option value="500">500ms</option>
-            <option value="1000" selected>1s</option>
-            <option value="2000">2s</option>
-            <option value="5000">5s</option>
-            <option value="10000">10s</option>
-          </select>
-        </label>
-        <button id="pollBtn">▶ 开始监控</button>
-        <button id="viewBtn">仪表盘</button>
-      </div>
-
-      <!-- 监控表格 -->
-      <div class="table-wrap" id="tableView">
-        <table>
-          <thead><tr><th>地址</th><th>数据类型</th><th>原始值</th><th>解析值</th><th>公式</th><th>操作</th></tr></thead>
-          <tbody id="tbody"></tbody>
-        </table>
-      </div>
-
-      <!-- 仪表盘视图（调试模式，展示设置了名称的行） -->
-      <div id="dashView" class="dash-wrap hidden"></div>
-    </div>
-
-    <!-- ── 设备模式（v0.2）── -->
-    <div id="deviceArea" class="device-area hidden"></div>
-
-    <!-- 日志栏 -->
-    <div id="logPanel">
-      <div id="logToggle" class="log-header">通信日志 ▾</div>
-      <div id="logBox"></div>
-    </div>
-  </div>
+  <!-- ── 弹窗（全局共用） ── -->
 
   <!-- 写入弹窗 -->
   <div id="writeModal" class="overlay hidden">
@@ -90,15 +163,15 @@
       <input id="modalInput" autocomplete="off">
       <div id="modalError" class="error-text"></div>
       <div class="modal-btns">
-        <button id="modalCancel">取消</button>
+        <button id="modalCancel" class="btn secondary">取消</button>
         <button id="modalOk">写入</button>
       </div>
     </div>
   </div>
 
-  <!-- 行设置弹窗（名称 + 线性公式） -->
+  <!-- 行设置弹窗（名称 + 公式） -->
   <div id="transformModal" class="overlay hidden">
-    <div class="modal-box">
+    <div class="modal-box" style="width:420px">
       <h3 id="tfTitle"></h3>
       <p class="hint">显示值 = k × 解析值 + b；填写名称后该行进入仪表盘</p>
       <div class="tf-grid">
@@ -110,30 +183,20 @@
       </div>
       <div id="tfError" class="error-text"></div>
       <div class="modal-btns">
-        <button id="tfClear">清除设置</button>
-        <button id="tfCancel">取消</button>
+        <button id="tfClear" class="btn danger" style="flex:0;padding:3px 10px">清除设置</button>
+        <button id="tfCancel" class="btn secondary">取消</button>
         <button id="tfOk">保存</button>
       </div>
     </div>
   </div>
 
-  <!-- ── 设备类型列表管理弹窗 ── -->
-  <div id="typeManagerModal" class="overlay hidden">
-    <div class="modal-box" style="width:420px">
-      <h3>设备类型管理</h3>
-      <div id="typeList"></div>
-      <div id="typeMgrError" class="error-text"></div>
-      <div class="modal-btns">
-        <button id="addTypeBtn">＋ 新建类型</button>
-        <button id="closeTypeMgrBtn" style="background:#fff;color:#444;border-color:#ccc">关闭</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ── 设备类型点位编辑弹窗 ── -->
+  <!-- 类型点位编辑弹窗 -->
   <div id="typeEditorModal" class="overlay hidden">
     <div class="modal-box" style="width:820px;max-width:95vw">
       <h3 id="typeEditorTitle"></h3>
+      <div style="margin:10px 0;text-align:left">
+        <label style="color:var(--ink-2);font-size:13px">类型名称 <input id="typeNameInput" style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface-2);color:var(--ink-1);margin-left:6px;width:200px"></label>
+      </div>
       <div class="type-points-table-wrap">
         <table>
           <thead><tr><th>名称</th><th>区域</th><th>地址</th><th>类型</th><th>字序</th><th>k</th><th>b</th><th>小数位</th><th>单位</th><th></th></tr></thead>
@@ -144,13 +207,13 @@
       <div id="typeEditorError" class="error-text"></div>
       <div class="modal-btns">
         <button id="addPointBtn">＋ 添加点位</button>
-        <button id="typeCancelBtn" style="background:#fff;color:#444;border-color:#ccc">取消</button>
+        <button id="typeCancelBtn" class="btn secondary">取消</button>
         <button id="typeSaveBtn">保存</button>
       </div>
     </div>
   </div>
 
-  <!-- ── 实例管理弹窗 ── -->
+  <!-- 实例管理弹窗 -->
   <div id="instanceModal" class="overlay hidden">
     <div class="modal-box" style="width:360px">
       <h3>添加设备实例</h3>
@@ -173,7 +236,7 @@
       </div>
       <div id="instModalError" class="error-text"></div>
       <div class="modal-btns">
-        <button id="instModalCancel" style="background:#fff;color:#444;border-color:#ccc">取消</button>
+        <button id="instModalCancel" class="btn secondary">取消</button>
         <button id="instModalOk">保存</button>
       </div>
     </div>
