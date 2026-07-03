@@ -1,6 +1,7 @@
 {
   "name": "modbusmate",
   "version": "0.1.0",
+  "private": true,
   "description": "ModbusMate — Modbus-TCP 调试工具",
   "main": "main/index.js",
   "scripts": {

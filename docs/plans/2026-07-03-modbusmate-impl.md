@@ -1107,9 +1107,16 @@ function saveConfig(cfg) { fs.writeFileSync(configFile(), JSON.stringify(cfg)) }
 function createWindow() {
   win = new BrowserWindow({
     width: 940, height: 680, minWidth: 800, minHeight: 560,
-    webPreferences: { preload: path.join(__dirname, '..', 'preload.js'), contextIsolation: true },
+    // 安全基线显式写出，避免后续改动时被无意放宽
+    webPreferences: {
+      preload: path.join(__dirname, '..', 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
   })
   win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'))
+  win.on('closed', () => { win = null })
 }
 
 function send(channel, payload) { win?.webContents.send(channel, payload) }
@@ -1143,8 +1150,11 @@ app.whenReady().then(() => {
   activation = new Activation(app.getPath('userData'))
   registerIpc()
   createWindow()
-})
-app.on('window-all-closed', () => app.quit())
+}).catch(err => { console.error(err); app.quit() })
+
+// macOS 惯例：关窗不退出，点 Dock 图标重开窗口；其他平台关窗即退出
+app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
+app.on('activate', () => { if (win === null && activation) createWindow() })
 ```
 
 - [ ] **Step 2: 全量替换 preload.js**
@@ -1197,6 +1207,7 @@ git commit -m "feat: 主进程 IPC 接线、配置持久化、崩溃日志"
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'">
   <title>ModbusMate</title>
   <link rel="stylesheet" href="style.css">
 </head>
