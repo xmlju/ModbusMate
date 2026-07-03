@@ -253,15 +253,20 @@ const DeviceUI = (() => {
   }
 
   async function deleteInstance(id) {
-    const inst = state.instances.find(i => i.id === id)
-    if (!inst) return
-    if (state.running[id]) { alert('请先停止设备再删除'); return }
-    if (!confirm(`确定删除实例「${inst.name}」？`)) return
-    // 如有设备管理器实例，停止轮询
-    if (window._appStopInstance) window._appStopInstance(id)
-    state.instances = state.instances.filter(i => i.id !== id)
-    delete state.running[id]; delete state.statuses[id]; delete state.data[id]
-    await saveToConfig(); renderMgrPage(); renderOverviewPage()
+    try {
+      const inst = state.instances.find(i => i.id === id)
+      if (!inst) { alert(`未找到实例 (${id})，请刷新页面重试`); return }
+      if (state.running[id]) { alert('请先停止设备再删除'); return }
+      if (!confirm(`确定删除实例「${inst.name}」？`)) return
+      // 如有设备管理器实例，停止轮询
+      if (window._appStopInstance) window._appStopInstance(id)
+      state.instances = state.instances.filter(i => i.id !== id)
+      delete state.running[id]; delete state.statuses[id]; delete state.data[id]
+      await saveToConfig(); renderMgrPage(); renderOverviewPage()
+    } catch (e) {
+      console.error('deleteInstance 异常', e)
+      alert('删除失败: ' + (e.message || e))
+    }
   }
 
   function openTypeEditor(idx) {
@@ -434,3 +439,4 @@ const DeviceUI = (() => {
     deleteInstance,
   }
 })()
+window.DeviceUI = DeviceUI  // 显式暴露给全局，确保 onclick 可访问
