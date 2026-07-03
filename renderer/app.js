@@ -99,6 +99,13 @@ async function startApp() {
   populateDeviceDebugSel()
 
   log('info', 'ModbusMate v0.3 就绪，请连接设备')
+
+  // ── 主题初始化 ──
+  initTheme(cfg.theme || 'dark')
+  // 绑定主题点击
+  document.querySelectorAll('.theme-btn').forEach(btn => {
+    btn.addEventListener('click', () => applyTheme(btn.dataset.themeVal))
+  })
 }
 
 // ── 导航页切换 ──
@@ -116,6 +123,36 @@ function switchNav(page) {
   }
 }
 window.switchNav = switchNav  // 暴露给 device.js
+
+// ── 主题切换 ──
+let currentTheme = 'dark'
+let systemMedia = null  // matchMedia 句柄
+
+function applyTheme(theme) {
+  currentTheme = theme
+  document.documentElement.setAttribute('data-theme', theme)
+  // 更新按钮样式
+  document.querySelectorAll('.theme-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.themeVal === theme)
+  })
+  // 持久化
+  window.api.loadConfig().then(cfg => window.api.saveConfig({ ...cfg, theme }))
+}
+
+function initTheme(savedTheme) {
+  applyTheme(savedTheme || 'dark')
+  // 监听系统主题变化（system 模式下实时跟随）
+  if (systemMedia) systemMedia.removeEventListener('change', onSystemChange)
+  systemMedia = window.matchMedia('(prefers-color-scheme: dark)')
+  systemMedia.addEventListener('change', onSystemChange)
+}
+
+function onSystemChange() {
+  if (currentTheme === 'system') {
+    // 重新设置 data-theme="system" 触发 CSS media query
+    document.documentElement.setAttribute('data-theme', 'system')
+  }
+}
 
 // ── 设备总览页：数据/状态变化时刷新 ──
 function refreshOverview() {

@@ -17,6 +17,28 @@
   --mono: ui-monospace, Menlo, Consolas, monospace;
 }
 
+/* ── Light Theme Overrides ── */
+[data-theme="light"] {
+  --page: #f4f5f7;
+  --surface: #ffffff;
+  --surface-2: #e8eaee;
+  --border: rgba(0,0,0,.12);
+  --ink-1: #1a1a1a;
+  --ink-2: #555555;
+  --ink-3: #999999;
+  --accent: #2864d0;
+  --status-good: #1a8a1a;
+  --status-warning: #d4880f;
+  --status-critical: #c0392b;
+}
+
+/* ── System Mode: 跟随系统 ── */
+@media (prefers-color-scheme: light) {
+  [data-theme="system"] { --page: #f4f5f7; --surface: #ffffff; --surface-2: #e8eaee; --border: rgba(0,0,0,.12);
+  --ink-1: #1a1a1a; --ink-2: #555555; --ink-3: #999999; --accent: #2864d0;
+  --status-good: #1a8a1a; --status-warning: #d4880f; --status-critical: #c0392b; }
+}
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { background: var(--page); color: var(--ink-2); font: 13px/1.5 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; height: 100vh; }
 .hidden { display: none !important; }
@@ -210,3 +232,9 @@ td select { padding: 2px 4px; margin-right: 4px; background: var(--surface-2); c
 
 /* ── 连接状态文本 ── */
 #statusText { color: var(--ink-2); }
+
+/* ── 主题切换按钮 ── */
+.theme-toggles { display: flex; gap: 6px; }
+.theme-btn { flex: 1; padding: 4px 0; border: 1px solid var(--border); border-radius: 6px; background: transparent; color: var(--ink-3); font-size: 14px; cursor: pointer; text-align: center; transition: all .15s; }
+.theme-btn:hover { background: var(--surface-2); color: var(--ink-1); }
+.theme-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
