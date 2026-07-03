@@ -9,6 +9,10 @@
     "dev": "MM_DEV=1 electron .",
     "test": "vitest run",
     "sim": "node test/simulator.js",
+    "sim:bat": "node scripts/simulate-device.js 8502 battery",
+    "sim:plc": "node scripts/simulate-device.js 8503 plc",
+    "sim:temp": "node scripts/simulate-device.js 8504 temp",
+    "sim:all": "node scripts/simulate-device.js 8502 battery & node scripts/simulate-device.js 8503 plc & node scripts/simulate-device.js 8504 temp",
     "dist": "electron-builder"
   },
   "dependencies": {
