@@ -390,7 +390,7 @@ const DeviceUI = (() => {
       await saveToConfig(); closeInstanceModal(); renderMgrPage(); renderOverviewPage()
       log('info', `已添加设备实例「${name}」`)
       // 跳转到管理页让用户看到实例
-      window.switchNav('mgrPage')
+      window.switchNav('mgr')
       // 刷新设备调试下拉
       if (window.populateDeviceDebugSel) window.populateDeviceDebugSel()
     }

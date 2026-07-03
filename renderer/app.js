@@ -106,11 +106,11 @@ function switchNav(page) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.page === page))
   document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === page + 'Page'))
   // 切到特定页时重新加载配置并渲染
-  if (page === 'devOverview' || page === 'mgrPage' || page === 'devDebug') {
+  if (page === 'devOverview' || page === 'mgr' || page === 'devDebug') {
     window.api.loadConfig().then(cfg => {
       DeviceUI.loadFromConfig(cfg)
       if (page === 'devOverview') { DeviceUI.renderOverviewPage(); updateOnlineOfflinePills() }
-      if (page === 'mgrPage') DeviceUI.renderMgrPage()
+      if (page === 'mgr') DeviceUI.renderMgrPage()
       if (page === 'devDebug') populateDeviceDebugSel()
     })
   }
