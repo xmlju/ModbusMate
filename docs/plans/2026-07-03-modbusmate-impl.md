@@ -368,7 +368,7 @@ git commit -m "feat: codec 32位类型与AB/BA字序（TDD）"
 
 ---
 
-### Task 4: codec — PLC/协议地址换算（TDD）
+### Task 4: codec — PLC/协议地址换算 + 线性公式转换（TDD）
 
 **Files:**
 - Modify: `renderer/codec.js`
@@ -376,7 +376,7 @@ git commit -m "feat: codec 32位类型与AB/BA字序（TDD）"
 
 - [ ] **Step 1: 追加失败测试**
 
-在 `test/codec.test.js` 末尾追加（注意顶部解构需补充：把 `const { decode, encode, TYPES } = Codec` 改为 `const { decode, encode, TYPES, toPlcAddress, toProtocolAddress } = Codec`）：
+在 `test/codec.test.js` 末尾追加（注意顶部解构需补充：把 `const { decode, encode, TYPES } = Codec` 改为 `const { decode, encode, TYPES, toPlcAddress, toProtocolAddress, applyTransform } = Codec`）：
 
 ```js
 describe('PLC/协议地址换算', () => {
@@ -395,6 +395,24 @@ describe('PLC/协议地址换算', () => {
     expect(() => toProtocolAddress(39999, 'holding')).toThrow('超出')
   })
 })
+
+describe('线性公式转换 applyTransform', () => {
+  it('y = k·x + b', () => {
+    expect(applyTransform(250, { k: 0.1, b: 0 })).toBeCloseTo(25, 6)
+    expect(applyTransform(500, { k: 0.1, b: -40 })).toBeCloseTo(10, 6)
+  })
+  it('小数位控制', () => {
+    expect(applyTransform(333, { k: 1 / 3, b: 0, decimals: 2 })).toBe(111)
+    expect(applyTransform(100, { k: 0.123, b: 0, decimals: 2 })).toBe(12.3)
+  })
+  it('默认参数不改变数值', () => {
+    expect(applyTransform(42, {})).toBe(42)
+    expect(applyTransform(42)).toBe(42)
+  })
+  it('非数值（Hex 字符串）原样返回', () => {
+    expect(applyTransform('0x00FA', { k: 0.1 })).toBe('0x00FA')
+  })
+})
 ```
 
 - [ ] **Step 2: 运行确认失败**
@@ -404,7 +422,7 @@ Expected: 新增用例 FAIL
 
 - [ ] **Step 3: 实现地址换算**
 
-`renderer/codec.js` IIFE 内加入（并把 `return { TYPES, decode, encode }` 改为 `return { TYPES, decode, encode, toPlcAddress, toProtocolAddress }`）：
+`renderer/codec.js` IIFE 内加入（并把 `return { TYPES, decode, encode }` 改为 `return { TYPES, decode, encode, toPlcAddress, toProtocolAddress, applyTransform }`）：
 
 ```js
   // PLC 习惯地址基址：线圈 0xxxx（从 1 计）、离散输入 1xxxx、输入寄存器 3xxxx、保持寄存器 4xxxx
@@ -419,6 +437,13 @@ Expected: 新增用例 FAIL
     if (p < 0 || p > 65535) throw new Error(`地址超出${area === 'holding' ? '保持寄存器' : area === 'input' ? '输入寄存器' : area === 'coil' ? '线圈' : '离散输入'}区域范围`)
     return p
   }
+
+  // 线性公式转换：显示值 = k·x + b；decimals 小数位（null=自动）；非数值原样返回
+  function applyTransform(value, { k = 1, b = 0, decimals = null } = {}) {
+    if (typeof value !== 'number') return value
+    const y = k * value + b
+    return decimals === null ? y : Number(y.toFixed(decimals))
+  }
 ```
 
 - [ ] **Step 4: 运行确认全部通过**
@@ -430,7 +455,7 @@ Expected: PASS
 
 ```bash
 git add renderer/codec.js test/codec.test.js
-git commit -m "feat: codec PLC/协议地址换算（TDD）"
+git commit -m "feat: codec 地址换算与线性公式转换（TDD）"
 ```
 
 ---
@@ -1258,15 +1283,19 @@ git commit -m "feat: 主进程 IPC 接线、配置持久化、崩溃日志"
         </select>
       </label>
       <button id="pollBtn">▶ 开始监控</button>
+      <button id="viewBtn">仪表盘</button>
     </div>
 
     <!-- 监控表格 -->
-    <div class="table-wrap">
+    <div class="table-wrap" id="tableView">
       <table>
-        <thead><tr><th>地址</th><th>数据类型</th><th>原始值</th><th>解析值</th><th>操作</th></tr></thead>
+        <thead><tr><th>地址</th><th>数据类型</th><th>原始值</th><th>解析值</th><th>公式</th><th>操作</th></tr></thead>
         <tbody id="tbody"></tbody>
       </table>
     </div>
+
+    <!-- 仪表盘视图（展示设置了名称的行） -->
+    <div id="dashView" class="dash-wrap hidden"></div>
 
     <!-- 日志栏 -->
     <div id="logPanel">
@@ -1285,6 +1314,27 @@ git commit -m "feat: 主进程 IPC 接线、配置持久化、崩溃日志"
       <div class="modal-btns">
         <button id="modalCancel">取消</button>
         <button id="modalOk">写入</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 行设置弹窗（名称 + 线性公式） -->
+  <div id="transformModal" class="overlay hidden">
+    <div class="modal-box">
+      <h3 id="tfTitle"></h3>
+      <p class="hint">显示值 = k × 解析值 + b；填写名称后该行进入仪表盘</p>
+      <div class="tf-grid">
+        <label>名称 <input id="tfName" placeholder="如 电池电量"></label>
+        <label>单位 <input id="tfUnit" placeholder="如 %、A、V"></label>
+        <label>系数 k <input id="tfK" value="1"></label>
+        <label>偏移 b <input id="tfB" value="0"></label>
+        <label>小数位 <input id="tfDecimals" placeholder="自动"></label>
+      </div>
+      <div id="tfError" class="error-text"></div>
+      <div class="modal-btns">
+        <button id="tfClear">清除设置</button>
+        <button id="tfCancel">取消</button>
+        <button id="tfOk">保存</button>
       </div>
     </div>
   </div>
@@ -1350,6 +1400,24 @@ td select { padding: 2px 4px; margin-right: 4px; }
 .modal-btns { display: flex; gap: 10px; margin-top: 14px; }
 .modal-btns button { flex: 1; }
 #modalCancel { background: #fff; color: #444; border-color: #ccc; }
+
+/* 行设置弹窗（名称 + 公式） */
+.tf-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; text-align: left; }
+.tf-grid label { display: flex; align-items: center; gap: 6px; font-size: 12px; white-space: nowrap; }
+.tf-grid input { width: 100%; padding: 5px; font-size: 13px; text-align: left; letter-spacing: 0; }
+#tfClear { background: #fff; color: #e5484d; border-color: #e5484d; }
+.tfBtn { padding: 2px 10px; font-size: 12px; background: #fff; color: #3a6df0; }
+
+/* 仪表盘视图 */
+.dash-wrap { flex: 1; overflow: auto; padding: 16px; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; align-content: start; }
+.dash-card { background: #fff; border: 1px solid #e2e4e8; border-radius: 10px; padding: 16px; }
+.dash-name { color: #666; font-size: 13px; margin-bottom: 6px; }
+.dash-value { font-size: 32px; font-weight: 700; line-height: 1.2; }
+.dash-unit { font-size: 14px; color: #888; margin-left: 4px; font-weight: 400; }
+.dash-card.flash { background: #fff9e0; }
+.dash-empty { color: #999; padding: 40px; text-align: center; grid-column: 1 / -1; }
+.dash-bar { height: 6px; background: #eef1f5; border-radius: 3px; margin-top: 10px; overflow: hidden; }
+.dash-bar > div { height: 100%; background: #3a6df0; border-radius: 3px; transition: width .3s; }
 ```
 
 - [ ] **Step 3: 写 renderer/app.js**
@@ -1362,10 +1430,11 @@ const state = {
   connected: false,
   polling: false,
   area: 'holding', addr: 0, count: 10, interval: 1000,
-  rows: [],          // 每行 { type, wordOrder }；位区域行为 { type: 'bit' }
+  rows: [],          // 每行 { type, wordOrder, transform? }；transform = { name, unit, k, b, decimals }；位区域行为 { type: 'bit' }
   values: [],        // 最新原始值
   prevValues: [],    // 上一轮值，用于变化高亮
   plcMode: true,
+  dashboard: false,  // true = 仪表盘视图
 }
 
 const isBitArea = () => state.area === 'coil' || state.area === 'discrete'
@@ -1415,6 +1484,10 @@ async function startApp() {
   $('logToggle').addEventListener('click', () => $('logPanel').classList.toggle('collapsed'))
   $('modalCancel').addEventListener('click', closeModal)
   $('modalOk').addEventListener('click', confirmWrite)
+  $('viewBtn').addEventListener('click', toggleView)
+  $('tfCancel').addEventListener('click', closeTransformModal)
+  $('tfOk').addEventListener('click', saveTransform)
+  $('tfClear').addEventListener('click', clearTransform)
 
   window.api.onData(onData)
   window.api.onStatus(st => onStatus(st))
@@ -1486,13 +1559,18 @@ async function onPollClick() {
   // 区域类型不变时保留每行已设置的数据类型
   state.rows = Array.from({ length: count }, (_, i) =>
     bit ? { type: 'bit' } : (!areaChanged && state.rows[i] && state.rows[i].type !== 'bit' ? state.rows[i] : { type: 'uint16', wordOrder: 'AB' }))
+  // 同一监控配置（区域:地址:数量）恢复上次保存的行设置（类型/字序/名称/公式）
+  const savedCfg = await window.api.loadConfig()
+  if (savedCfg.rowsKey === `${area}:${addr}:${count}` && Array.isArray(savedCfg.rows)) {
+    state.rows = savedCfg.rows
+  }
   state.values = []
   state.prevValues = []
   renderTable()
 
   await window.api.startPoll({ area, addr, count, interval })
   const cfg = await window.api.loadConfig()
-  await window.api.saveConfig({ ...cfg, area, addr, count, interval })
+  await window.api.saveConfig({ ...cfg, area, addr, count, interval, rows: state.rows, rowsKey: `${area}:${addr}:${count}` })
   state.polling = true
   $('pollBtn').textContent = '⏸ 停止监控'
   log('info', `开始监控 ${area} 区域，地址 ${addr} 起 ${count} 点，周期 ${interval}ms`)
@@ -1502,6 +1580,7 @@ function onData(d) {
   state.prevValues = state.values
   state.values = d.values
   renderValues()
+  renderDashboard()
 }
 
 // ── 表格 ──
@@ -1536,7 +1615,10 @@ function renderTable() {
       const orderHidden = Codec.TYPES[row.type].words === 2 ? '' : 'hidden'
       typeCell = `<td><select class="typeSel">${opts}</select><select class="orderSel ${orderHidden}"><option ${row.wordOrder === 'AB' ? 'selected' : ''}>AB</option><option ${row.wordOrder === 'BA' ? 'selected' : ''}>BA</option></select></td>`
     }
-    tr.innerHTML = `<td>${dispAddr}</td>${typeCell}<td class="raw">—</td><td class="parsed">—</td><td>${writable ? '<button class="writeBtn">写入</button>' : ''}</td>`
+    // 公式列：位区域不支持；已设置则显示名称或公式概览
+    const t = state.rows[i].transform
+    const tfCell = bit ? '<td></td>' : `<td><button class="tfBtn">${t ? escapeHtml(t.name || formatTransform(t)) : '设置'}</button></td>`
+    tr.innerHTML = `<td>${dispAddr}</td>${typeCell}<td class="raw">—</td><td class="parsed">—</td>${tfCell}<td>${writable ? '<button class="writeBtn">写入</button>' : ''}</td>`
     tbody.appendChild(tr)
   }
   tbody.querySelectorAll('.typeSel').forEach(sel => sel.addEventListener('change', e => {
@@ -1552,7 +1634,18 @@ function renderTable() {
   tbody.querySelectorAll('.writeBtn').forEach(btn => btn.addEventListener('click', e => {
     openWriteModal(Number(e.target.closest('tr').dataset.index))
   }))
+  tbody.querySelectorAll('.tfBtn').forEach(btn => btn.addEventListener('click', e => {
+    openTransformModal(Number(e.target.closest('tr').dataset.index))
+  }))
   renderValues()
+}
+
+// 公式按钮概览文本，如 ×0.1−40
+function formatTransform(t) {
+  let s = `×${t.k}`
+  if (t.b) s += t.b > 0 ? `+${t.b}` : `${t.b}`
+  if (t.unit) s += ` ${t.unit}`
+  return s
 }
 
 function renderValues() {
@@ -1576,10 +1669,21 @@ function renderValues() {
       parsedCell.textContent = v ? 'ON' : 'OFF'
     } else {
       rawCell.textContent = '0x' + v.toString(16).toUpperCase().padStart(4, '0')
-      const { type, wordOrder } = state.rows[i]
+      const { type, wordOrder, transform } = state.rows[i]
       const parsed = Codec.decode(state.values, i, type, wordOrder)
-      parsedCell.textContent = parsed === null ? '（缺下一寄存器）'
-        : (typeof parsed === 'number' && !Number.isInteger(parsed) ? parsed.toFixed(4) : String(parsed))
+      if (parsed === null) {
+        parsedCell.textContent = '（缺下一寄存器）'
+        parsedCell.title = ''
+      } else if (transform && typeof parsed === 'number') {
+        // 公式转换后的业务值 + 单位；悬停显示原始解析值
+        const y = Codec.applyTransform(parsed, transform)
+        const shown = typeof y === 'number' && !Number.isInteger(y) && transform.decimals == null ? y.toFixed(4) : String(y)
+        parsedCell.textContent = transform.unit ? `${shown} ${transform.unit}` : shown
+        parsedCell.title = `原始解析值：${parsed}`
+      } else {
+        parsedCell.textContent = typeof parsed === 'number' && !Number.isInteger(parsed) ? parsed.toFixed(4) : String(parsed)
+        parsedCell.title = ''
+      }
     }
     // 变化高亮：值与上一轮不同则闪烁
     if (state.prevValues.length > 0 && state.prevValues[i] !== v) {
@@ -1598,8 +1702,10 @@ function openWriteModal(i) {
   writeTarget = { index: i }
   const dispAddr = state.plcMode ? Codec.toPlcAddress(state.addr + i, state.area) : state.addr + i
   $('modalTitle').textContent = `写入地址 ${dispAddr}（${coil ? '线圈' : Codec.TYPES[row.type].label}）`
-  $('modalHint').textContent = coil ? '输入 1=ON，0=OFF'
+  const baseHint = coil ? '输入 1=ON，0=OFF'
     : row.type === 'hex' ? '输入十六进制，如 1A2B' : '输入数值'
+  // 设了公式的行提醒：写入的是原始值，不做反向换算
+  $('modalHint').textContent = !coil && row.transform ? `${baseHint}（原始值，不经公式转换）` : baseHint
   $('modalInput').value = ''
   $('modalError').textContent = ''
   $('writeModal').classList.remove('hidden')
@@ -1635,6 +1741,135 @@ async function confirmWrite() {
   } catch (err) {
     $('modalError').textContent = `写入失败：${cleanErr(err.message)}`
   }
+}
+
+// ── 行设置弹窗（名称 + 线性公式）──
+let transformTarget = null
+
+function openTransformModal(i) {
+  transformTarget = { index: i }
+  const t = state.rows[i].transform || {}
+  const dispAddr = state.plcMode ? Codec.toPlcAddress(state.addr + i, state.area) : state.addr + i
+  $('tfTitle').textContent = `地址 ${dispAddr} 行设置`
+  $('tfName').value = t.name ?? ''
+  $('tfUnit').value = t.unit ?? ''
+  $('tfK').value = t.k ?? 1
+  $('tfB').value = t.b ?? 0
+  $('tfDecimals').value = t.decimals ?? ''
+  $('tfError').textContent = ''
+  $('transformModal').classList.remove('hidden')
+}
+
+function closeTransformModal() {
+  $('transformModal').classList.add('hidden')
+  transformTarget = null
+}
+
+function saveTransform() {
+  if (!transformTarget) return
+  const k = Number($('tfK').value)
+  const b = Number($('tfB').value)
+  const dRaw = $('tfDecimals').value.trim()
+  const decimals = dRaw === '' ? null : Number(dRaw)
+  if (Number.isNaN(k) || Number.isNaN(b)) { $('tfError').textContent = '系数 k 和偏移 b 必须是数字'; return }
+  if (decimals !== null && (!Number.isInteger(decimals) || decimals < 0 || decimals > 6)) {
+    $('tfError').textContent = '小数位应为 0~6 的整数，留空表示自动'; return
+  }
+  state.rows[transformTarget.index].transform = {
+    name: $('tfName').value.trim(), unit: $('tfUnit').value.trim(), k, b, decimals,
+  }
+  closeTransformModal()
+  renderTable()
+  renderDashboard(true)
+  saveRowsConfig()
+}
+
+function clearTransform() {
+  if (!transformTarget) return
+  delete state.rows[transformTarget.index].transform
+  closeTransformModal()
+  renderTable()
+  renderDashboard(true)
+  saveRowsConfig()
+}
+
+// 行设置持久化（与监控配置绑定，重启/重新监控时恢复）
+async function saveRowsConfig() {
+  const cfg = await window.api.loadConfig()
+  await window.api.saveConfig({ ...cfg, rows: state.rows, rowsKey: `${state.area}:${state.addr}:${state.count}` })
+}
+
+// ── 仪表盘视图（大数字卡片）──
+let dashPrev = {}   // 上一轮显示值，用于卡片变化高亮
+
+function toggleView() {
+  state.dashboard = !state.dashboard
+  $('tableView').classList.toggle('hidden', state.dashboard)
+  $('dashView').classList.toggle('hidden', !state.dashboard)
+  $('viewBtn').textContent = state.dashboard ? '表格' : '仪表盘'
+  if (state.dashboard) renderDashboard(true)
+}
+
+function renderDashboard(rebuild = false) {
+  if (!state.dashboard) return
+  const dash = $('dashView')
+  const occ = isBitArea() ? [] : computeOccupied()
+  // 收集设置了名称的数据点
+  const items = []
+  state.rows.forEach((row, i) => {
+    if (!row.transform?.name || occ[i]) return
+    const v = state.values[i]
+    let display = '—', num = null
+    if (v !== undefined) {
+      if (row.type === 'bit') {
+        display = v ? 'ON' : 'OFF'
+      } else {
+        const parsed = Codec.decode(state.values, i, row.type, row.wordOrder)
+        if (parsed !== null) {
+          const y = Codec.applyTransform(parsed, row.transform)
+          num = typeof y === 'number' ? y : null
+          display = typeof y === 'number' && !Number.isInteger(y) && row.transform.decimals == null ? y.toFixed(2) : String(y)
+        }
+      }
+    }
+    items.push({ i, name: row.transform.name, unit: row.transform.unit || '', display, num })
+  })
+
+  if (rebuild || dash.childElementCount !== Math.max(items.length, 1)) {
+    dashPrev = {}
+    dash.innerHTML = items.length === 0
+      ? '<div class="dash-empty">还没有数据点：在表格视图点某行的「设置」，填上名称即可加入仪表盘</div>'
+      : items.map(it => `
+        <div class="dash-card" data-i="${it.i}">
+          <div class="dash-name">${escapeHtml(it.name)}</div>
+          <div class="dash-value"><span class="dash-num">—</span><span class="dash-unit">${escapeHtml(it.unit)}</span></div>
+          <div class="dash-bar hidden"><div></div></div>
+        </div>`).join('')
+  }
+
+  items.forEach(it => {
+    const card = dash.querySelector(`.dash-card[data-i="${it.i}"]`)
+    if (!card) return
+    card.querySelector('.dash-num').textContent = it.display
+    // 单位为 % 且值在 0~100 时显示进度条
+    const bar = card.querySelector('.dash-bar')
+    if (it.unit === '%' && it.num !== null && it.num >= 0 && it.num <= 100) {
+      bar.classList.remove('hidden')
+      bar.firstElementChild.style.width = it.num + '%'
+    } else {
+      bar.classList.add('hidden')
+    }
+    if (dashPrev[it.i] !== undefined && dashPrev[it.i] !== it.display) {
+      card.classList.add('flash')
+      setTimeout(() => card.classList.remove('flash'), 600)
+    }
+    dashPrev[it.i] = it.display
+  })
+}
+
+// 用户输入内容进 innerHTML 前转义
+function escapeHtml(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
 // ── 日志（环形缓冲 200 条）──
@@ -1692,6 +1927,10 @@ Run: `npm run dev`（MM_DEV=1 跳过激活）
 10. 停掉模拟器（Ctrl+C）→ 约 3 个周期后状态变"连接中断，自动重连中…"；重新 `npm run sim` → 5s 内恢复"已连接"并继续刷新
 11. 写入弹窗输入超范围值（如 UInt16 输入 `70000`）→ 弹窗内显示"UInt16 取值范围 0 ~ 65535"
 12. 重启应用 → 连接参数和监控配置自动恢复
+13. 给 40011 行点「设置」：名称 `电池电量`、单位 `%`、k `0.1`、b `0` → 解析值列显示转换后的值和 %，悬停显示原始解析值
+14. 点「仪表盘」→ 出现「电池电量」大数字卡片，值随轮询刷新且变化高亮，0~100 时带进度条；点「表格」切回
+15. 再给 40001 行设名称 `电压`、单位 `V`，40006 行设名称 `电流`、单位 `A`、k `0.1`、小数位 `1` → 仪表盘三张卡片同时实时刷新
+16. 重启应用，重新对同一区域/地址/数量开始监控 → 行设置（类型/公式/名称）自动恢复，仪表盘卡片还在
 
 - [ ] **Step 3: 修复发现的问题（如有），跑全量测试**
 
@@ -1842,6 +2081,6 @@ git commit -m "chore: 回填激活服务地址"
 
 ## 自审记录
 
-- **规格覆盖**：轮询监控（T7/T11）、单点写入含 FC05/06/16（T6/T11）、数据类型与字序（T2/T3）、PLC 地址（T4/T11）、断线重连（T7）、变化高亮（T11）、日志与中文错误（T6/T11）、配置持久化（T10/T11）、激活授权（T8/T9/T14）、模拟器测试（T5/T6）、打包（T13）——全部有对应任务
+- **规格覆盖**：轮询监控（T7/T11）、单点写入含 FC05/06/16（T6/T11）、数据类型与字序（T2/T3）、PLC 地址与线性公式转换（T4/T11）、仪表盘大数字卡片（T11）、断线重连（T7）、变化高亮（T11）、日志与中文错误（T6/T11）、配置与行设置持久化（T10/T11）、激活授权（T8/T9/T14）、模拟器测试（T5/T6）、打包（T13）——全部有对应任务
 - **占位符**：`main/activation.js` 中 REPLACE 常量是刻意设计（部署后由 T14 回填），非计划缺口
 - **类型一致性**：`read()/write()` 签名、`Codec` API、IPC 通道名、事件名（`pollError`）在各任务间已核对一致
