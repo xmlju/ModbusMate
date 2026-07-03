@@ -10,60 +10,70 @@
   <!-- 激活遮罩（已注释禁用） -->
   <!--
   <div id="activationOverlay" class="overlay hidden">
-    <div class="activation-box">
-      ...
-    </div>
+    ...
   </div>
   -->
 
+  <!-- 模式切换 Tab -->
+  <div class="mode-tabs">
+    <button id="debugTab" class="mode-tab active">调试</button>
+    <button id="deviceTab" class="mode-tab">设备</button>
+  </div>
+
   <div id="app" class="hidden">
-    <!-- 连接栏 -->
-    <div class="bar">
-      <label>IP <input id="host" placeholder="192.168.1.10"></label>
-      <label>端口 <input id="port" type="number" value="502"></label>
-      <label>从站ID <input id="unitId" type="number" value="1"></label>
-      <button id="connectBtn">连接</button>
-      <span id="statusDot" class="dot disconnected"></span>
-      <span id="statusText">未连接</span>
-      <label class="right"><input id="plcMode" type="checkbox" checked> PLC 地址(4xxxx)</label>
+    <!-- ── 调试模式（v0.1 全部现状）── -->
+    <div id="debugArea">
+      <!-- 连接栏 -->
+      <div class="bar">
+        <label>IP <input id="host" placeholder="192.168.1.10"></label>
+        <label>端口 <input id="port" type="number" value="502"></label>
+        <label>从站ID <input id="unitId" type="number" value="1"></label>
+        <button id="connectBtn">连接</button>
+        <span id="statusDot" class="dot disconnected"></span>
+        <span id="statusText">未连接</span>
+        <label class="right"><input id="plcMode" type="checkbox" checked> PLC 地址(4xxxx)</label>
+      </div>
+
+      <!-- 监控配置栏 -->
+      <div class="bar">
+        <label>区域
+          <select id="area">
+            <option value="holding" selected>保持寄存器(FC03)</option>
+            <option value="input">输入寄存器(FC04)</option>
+            <option value="coil">线圈(FC01)</option>
+            <option value="discrete">离散输入(FC02)</option>
+          </select>
+        </label>
+        <label>起始地址 <input id="startAddr" type="number" value="0"></label>
+        <label>数量 <input id="count" type="number" value="10" min="1" max="120"></label>
+        <label>周期
+          <select id="interval">
+            <option value="100">100ms</option>
+            <option value="500">500ms</option>
+            <option value="1000" selected>1s</option>
+            <option value="2000">2s</option>
+            <option value="5000">5s</option>
+            <option value="10000">10s</option>
+          </select>
+        </label>
+        <button id="pollBtn">▶ 开始监控</button>
+        <button id="viewBtn">仪表盘</button>
+      </div>
+
+      <!-- 监控表格 -->
+      <div class="table-wrap" id="tableView">
+        <table>
+          <thead><tr><th>地址</th><th>数据类型</th><th>原始值</th><th>解析值</th><th>公式</th><th>操作</th></tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+
+      <!-- 仪表盘视图（调试模式，展示设置了名称的行） -->
+      <div id="dashView" class="dash-wrap hidden"></div>
     </div>
 
-    <!-- 监控配置栏 -->
-    <div class="bar">
-      <label>区域
-        <select id="area">
-          <option value="holding" selected>保持寄存器(FC03)</option>
-          <option value="input">输入寄存器(FC04)</option>
-          <option value="coil">线圈(FC01)</option>
-          <option value="discrete">离散输入(FC02)</option>
-        </select>
-      </label>
-      <label>起始地址 <input id="startAddr" type="number" value="0"></label>
-      <label>数量 <input id="count" type="number" value="10" min="1" max="120"></label>
-      <label>周期
-        <select id="interval">
-          <option value="100">100ms</option>
-          <option value="500">500ms</option>
-          <option value="1000" selected>1s</option>
-          <option value="2000">2s</option>
-          <option value="5000">5s</option>
-          <option value="10000">10s</option>
-        </select>
-      </label>
-      <button id="pollBtn">▶ 开始监控</button>
-      <button id="viewBtn">仪表盘</button>
-    </div>
-
-    <!-- 监控表格 -->
-    <div class="table-wrap" id="tableView">
-      <table>
-        <thead><tr><th>地址</th><th>数据类型</th><th>原始值</th><th>解析值</th><th>公式</th><th>操作</th></tr></thead>
-        <tbody id="tbody"></tbody>
-      </table>
-    </div>
-
-    <!-- 仪表盘视图（展示设置了名称的行） -->
-    <div id="dashView" class="dash-wrap hidden"></div>
+    <!-- ── 设备模式（v0.2）── -->
+    <div id="deviceArea" class="device-area hidden"></div>
 
     <!-- 日志栏 -->
     <div id="logPanel">
@@ -107,7 +117,71 @@
     </div>
   </div>
 
+  <!-- ── 设备类型列表管理弹窗 ── -->
+  <div id="typeManagerModal" class="overlay hidden">
+    <div class="modal-box" style="width:420px">
+      <h3>设备类型管理</h3>
+      <div id="typeList"></div>
+      <div id="typeMgrError" class="error-text"></div>
+      <div class="modal-btns">
+        <button id="addTypeBtn">＋ 新建类型</button>
+        <button id="closeTypeMgrBtn" style="background:#fff;color:#444;border-color:#ccc">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 设备类型点位编辑弹窗 ── -->
+  <div id="typeEditorModal" class="overlay hidden">
+    <div class="modal-box" style="width:820px;max-width:95vw">
+      <h3 id="typeEditorTitle"></h3>
+      <div class="type-points-table-wrap">
+        <table>
+          <thead><tr><th>名称</th><th>区域</th><th>地址</th><th>类型</th><th>字序</th><th>k</th><th>b</th><th>小数位</th><th>单位</th><th></th></tr></thead>
+          <tbody id="typePointsTbody"></tbody>
+        </table>
+      </div>
+      <p class="hint">32 位类型（Int32/UInt32/Float32）占用 2 个连续寄存器地址</p>
+      <div id="typeEditorError" class="error-text"></div>
+      <div class="modal-btns">
+        <button id="addPointBtn">＋ 添加点位</button>
+        <button id="typeCancelBtn" style="background:#fff;color:#444;border-color:#ccc">取消</button>
+        <button id="typeSaveBtn">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 实例管理弹窗 ── -->
+  <div id="instanceModal" class="overlay hidden">
+    <div class="modal-box" style="width:360px">
+      <h3>添加设备实例</h3>
+      <div class="inst-form">
+        <label>实例名 <input id="instName" placeholder="如 1号电池柜"></label>
+        <label>设备类型 <select id="instTypeSel"></select></label>
+        <label>IP <input id="instHost" placeholder="192.168.1.10"></label>
+        <label>端口 <input id="instPort" type="number" value="502"></label>
+        <label>从站ID <input id="instUnitId" type="number" value="1"></label>
+        <label>周期
+          <select id="instInterval">
+            <option value="100">100ms</option>
+            <option value="500">500ms</option>
+            <option value="1000" selected>1s</option>
+            <option value="2000">2s</option>
+            <option value="5000">5s</option>
+            <option value="10000">10s</option>
+          </select>
+        </label>
+      </div>
+      <div id="instModalError" class="error-text"></div>
+      <div class="modal-btns">
+        <button id="instModalCancel" style="background:#fff;color:#444;border-color:#ccc">取消</button>
+        <button id="instModalOk">保存</button>
+      </div>
+    </div>
+  </div>
+
   <script src="codec.js"></script>
+  <script src="read-plan.js"></script>
+  <script src="device.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

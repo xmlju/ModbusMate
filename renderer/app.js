@@ -24,7 +24,7 @@ async function init() {
 
 async function startApp() {
   $('app').classList.remove('hidden')
-  // 恢复上次配置
+  // 恢复上次配置（含设备模式）
   const cfg = await window.api.loadConfig()
   if (cfg.host) $('host').value = cfg.host
   if (cfg.port) $('port').value = cfg.port
@@ -48,7 +48,52 @@ async function startApp() {
   window.api.onData(onData)
   window.api.onStatus(st => onStatus(st))
   window.api.onLog(l => log(l.level, l.message))
+
+  // ── v0.2 设备模式 ──
+  // 暴露 log 给 device.js
+  window._appLogFn = (level, msg) => log(level, msg)
+  DeviceUI.loadFromConfig(cfg)
+  DeviceUI.init()
+
+  // 模式切换
+  const mode = cfg.appMode || 'debug'
+  switchMode(mode)
+  $('debugTab').addEventListener('click', () => switchMode('debug'))
+  $('deviceTab').addEventListener('click', () => switchMode('device'))
+
+  // 设备模式弹窗关闭按钮
+  $('closeTypeMgrBtn').addEventListener('click', () => {
+    $('typeManagerModal').classList.add('hidden')
+  })
+  $('typeCancelBtn').addEventListener('click', () => {
+    $('typeEditorModal').classList.add('hidden')
+    $('typeManagerModal').classList.remove('hidden')
+  })
+  $('instModalCancel').addEventListener('click', () => {
+    $('instanceModal').classList.add('hidden')
+  })
+
   log('info', 'ModbusMate 就绪，请连接设备')
+}
+
+function switchMode(mode) {
+  const debugArea = $('debugArea')
+  const deviceArea = $('deviceArea')
+  const debugTab = $('debugTab')
+  const deviceTab = $('deviceTab')
+
+  debugArea.classList.toggle('hidden', mode !== 'debug')
+  deviceArea.classList.toggle('hidden', mode !== 'device')
+  debugTab.classList.toggle('active', mode === 'debug')
+  deviceTab.classList.toggle('active', mode === 'device')
+
+  // 切到设备模式时渲染
+  if (mode === 'device') DeviceUI.renderDeviceArea()
+
+  // 持久化当前模式
+  window.api.loadConfig().then(cfg => {
+    window.api.saveConfig({ ...cfg, appMode: mode })
+  })
 }
 
 // ── 连接 ──
