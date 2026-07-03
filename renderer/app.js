@@ -52,6 +52,7 @@ async function startApp() {
   // ── 设备总览页按钮 ──
   $('ovAddInstBtn').addEventListener('click', () => DeviceUI.openInstanceModal())
   $('ovFirstAddBtn').addEventListener('click', () => DeviceUI.openInstanceModal())
+  $('ovRefreshBtn').addEventListener('click', () => refreshOverview())
 
   // ── 设备调试页 ──
   $('ddDeviceSel').addEventListener('change', () => renderDebugForDevice($('ddDeviceSel').value))
