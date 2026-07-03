@@ -97,7 +97,12 @@ async function startApp() {
 function switchNav(page) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.page === page))
   document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === page + 'Page'))
+  // 切到特定页时重新渲染内容
+  if (page === 'devOverview') { DeviceUI.renderOverviewPage(); updateOnlineOfflinePills() }
+  if (page === 'mgrPage') DeviceUI.renderMgrPage()
+  if (page === 'devDebug') populateDeviceDebugSel()
 }
+window.switchNav = switchNav  // 暴露给 device.js
 
 // ── 设备总览页：数据/状态变化时刷新 ──
 function refreshOverview() {
