@@ -213,9 +213,12 @@ const DeviceUI = (() => {
           <div class="mgr-row">
             <span class="mgr-name">${escapeHtml(t.name)}</span>
             <span class="mgr-meta">${t.points.length} 个点位</span>
-            <button class="btn ghost sm" data-action="editType" data-idx="${idx}">编辑</button>
-            <button class="btn ghost sm" style="border-color:var(--status-critical);color:var(--status-critical)" data-action="delType" data-idx="${idx}">删除</button>
+            <button class="btn ghost sm mgr-edit-type" data-idx="${idx}">编辑</button>
+            <button class="btn ghost sm mgr-del-type" style="border-color:var(--status-critical);color:var(--status-critical)" data-idx="${idx}">删除</button>
           </div>`).join('')
+        // 直接绑定类型编辑/删除
+        typeList.querySelectorAll('.mgr-edit-type').forEach(btn => btn.onclick = () => openTypeEditor(Number(btn.dataset.idx)))
+        typeList.querySelectorAll('.mgr-del-type').forEach(btn => btn.onclick = () => deleteType(Number(btn.dataset.idx)))
       }
     }
     // 实例列表
@@ -233,10 +236,13 @@ const DeviceUI = (() => {
             <span class="dot ${dotCls}"></span>
             <span class="mgr-name">${escapeHtml(inst.name)}</span>
             <span class="mgr-meta">${type ? escapeHtml(type.name) : '（未知）'} · ${escapeHtml(inst.host)}:${inst.port} · ${running ? '运行中' : '已停止'}</span>
-            <button class="btn ghost sm" data-action="toggleInst" data-id="${inst.id}">${running ? '停止' : '启动'}</button>
-            <button class="btn ghost sm" style="border-color:var(--status-critical);color:var(--status-critical)" data-action="delInst" data-id="${inst.id}">删除</button>
+            <button class="btn ghost sm mgr-toggle-inst" data-id="${inst.id}">${running ? '停止' : '启动'}</button>
+            <button class="btn ghost sm mgr-del-inst" style="border-color:var(--status-critical);color:var(--status-critical)" data-id="${inst.id}">删除</button>
           </div>`
         }).join('')
+        // 直接绑定实例启停/删除
+        instList.querySelectorAll('.mgr-toggle-inst').forEach(btn => btn.onclick = () => toggleInstance(btn.dataset.id))
+        instList.querySelectorAll('.mgr-del-inst').forEach(btn => btn.onclick = () => deleteInstance(btn.dataset.id))
       }
     }
   }
@@ -410,25 +416,11 @@ const DeviceUI = (() => {
 
   function closeInstanceModal() { $('instanceModal').classList.add('hidden') }
 
-  // ── 初始化（IPC 监听 + mgr 按钮事件委托）──
+  // ── 初始化（IPC 监听）──
   function init() {
     window.api.onDeviceData(onDeviceData)
     window.api.onDeviceStatus(onDeviceStatus)
     window.api.onDeviceLog(onDeviceLog)
-
-    // mgr 页面按钮事件委托（避免 inline onclick 作用域问题）
-     const mgrPage = document.getElementById('mgrPage')
-     if (mgrPage) {
-       mgrPage.addEventListener('click', async e => {
-         const btn = e.target.closest('button[data-action]')
-         if (!btn || !mgrPage.contains(btn)) return
-         const action = btn.dataset.action
-         if (action === 'editType') { openTypeEditor(Number(btn.dataset.idx)); return }
-         if (action === 'delType')  { deleteType(Number(btn.dataset.idx)); return }
-         if (action === 'toggleInst') { toggleInstance(btn.dataset.id); return }
-         if (action === 'delInst')  { deleteInstance(btn.dataset.id); return }
-       })
-     }
   }
 
   function switchToMgrPage() {
@@ -449,8 +441,6 @@ const DeviceUI = (() => {
     openInstanceModal,
     openTypeEditor,
     openTypeEditorForNew,
-    deleteType,
-    deleteInstance,
   }
 })()
-window.DeviceUI = DeviceUI  // 显式暴露给全局，确保 onclick 可访问
+window.DeviceUI = DeviceUI
