@@ -1066,9 +1066,11 @@ describe('ModbusTransport 错误友好化', () => {
   it.each([
     [1, '非法功能码：设备不支持该操作'],
     [2, '非法数据地址：设备不存在该地址，请检查起始地址和数量'],
-    [3, '非法数据值：写入值不被设备接受'],
+    [3, '非法数据值：写入值超出范围或格式不被设备接受'],
     [4, '设备故障：从站执行请求时发生不可恢复错误'],
+    [5, '设备已确认：正在处理该长耗时命令，请稍后查询结果'],
     [6, '设备忙：从站正在处理其他命令，请稍后重试'],
+    [12, '设备当前状态不允许该操作：多数参数需先关闭逆变/市电充电、切到空闲/关机状态后再写入'],
   ])('把异常码 %i 转换为中文提示', async (modbusCode, hint) => {
     const client = createFakeClient({
       readHoldingRegisters: vi.fn().mockRejectedValue(Object.assign(new Error('Modbus exception'), { modbusCode })),
