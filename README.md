@@ -38,6 +38,8 @@ Key features:
 - **Auto-reconnect** — Automatically retries connection every 5 seconds after 3 consecutive read failures
 - **Dark/Light theme** — One-click theme switching
 
+> **Development status:** The communication core now supports both **Modbus-TCP** and **Modbus-RTU**. RTU serial configuration accepts Windows `COM` ports and macOS `/dev/tty.*` device paths, and the serial-port enumeration IPC is complete. The browser-based UI and RTU forms on the existing pages will be connected to this core in the next phase; RTU is not yet available through the current UI.
+
 ---
 
 ## 2. Quick Start
