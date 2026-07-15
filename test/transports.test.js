@@ -35,6 +35,16 @@ function createFakeClient(overrides = {}) {
   }
 }
 
+function expectNoDriverCall(client) {
+  expect(client.readCoils).not.toHaveBeenCalled()
+  expect(client.readDiscreteInputs).not.toHaveBeenCalled()
+  expect(client.readHoldingRegisters).not.toHaveBeenCalled()
+  expect(client.readInputRegisters).not.toHaveBeenCalled()
+  expect(client.writeCoil).not.toHaveBeenCalled()
+  expect(client.writeRegister).not.toHaveBeenCalled()
+  expect(client.writeRegisters).not.toHaveBeenCalled()
+}
+
 describe('RtuTransport 串口连接', () => {
   it('仅把完整串口参数传给 RTU 驱动', async () => {
     const client = createFakeClient()
@@ -519,9 +529,64 @@ describe('ModbusTransport 读写', () => {
   })
 
   it('拒绝未知读取区域', async () => {
-    const transport = new ModbusTransport(() => createFakeClient())
+    const client = createFakeClient()
+    const transport = new ModbusTransport(() => client)
+    transport.client = client
 
     await expect(transport.read('mystery', 0, 1)).rejects.toThrow('未知区域类型: mystery')
+    expectNoDriverCall(client)
+  })
+
+  it.each([
+    ['字符串', '0'],
+    ['布尔值', true],
+    ['NaN', Number.NaN],
+    ['小数', 1.5],
+    ['负数', -1],
+    ['超过上限', 65536],
+  ])('读取拒绝非法 addr：%s', async (_label, addr) => {
+    const client = createFakeClient()
+    const transport = new ModbusTransport(() => client)
+    transport.client = client
+
+    await expect(transport.read('holding', addr, 1))
+      .rejects.toThrow('addr 必须是 0..65535 范围内的整数')
+    expectNoDriverCall(client)
+  })
+
+  it.each([
+    ['holding', 0, '1', 'count 必须是整数'],
+    ['input', 0, true, 'count 必须是整数'],
+    ['holding', 0, Number.NaN, 'count 必须是整数'],
+    ['input', 0, 1.5, 'count 必须是整数'],
+    ['holding', 0, 0, 'holding 读取 count 必须在 1..125 范围内'],
+    ['input', 0, 126, 'input 读取 count 必须在 1..125 范围内'],
+    ['coil', 0, 0, 'coil 读取 count 必须在 1..2000 范围内'],
+    ['discrete', 0, 2001, 'discrete 读取 count 必须在 1..2000 范围内'],
+    ['holding', 65535, 2, 'addr + count - 1 不能超过 65535'],
+    ['coil', 65535, 2, 'addr + count - 1 不能超过 65535'],
+  ])('读取拒绝非法参数：%s addr=%s count=%s', async (area, addr, count, message) => {
+    const client = createFakeClient()
+    const transport = new ModbusTransport(() => client)
+    transport.client = client
+
+    await expect(transport.read(area, addr, count)).rejects.toThrow(message)
+    expectNoDriverCall(client)
+  })
+
+  it.each([
+    ['holding', 65411, 125, 'readHoldingRegisters'],
+    ['input', 65411, 125, 'readInputRegisters'],
+    ['coil', 63536, 2000, 'readCoils'],
+    ['discrete', 63536, 2000, 'readDiscreteInputs'],
+  ])('允许 %s 在最大 count 下读取至地址上限', async (area, addr, count, method) => {
+    const data = Array(count).fill(area === 'holding' || area === 'input' ? 7 : false)
+    const client = createFakeClient({ [method]: vi.fn().mockResolvedValue({ data }) })
+    const transport = new ModbusTransport(() => client)
+    transport.client = client
+
+    await expect(transport.read(area, addr, count)).resolves.toHaveLength(count)
+    expect(client[method]).toHaveBeenCalledWith(addr, count)
   })
 
   it('写单个保持寄存器', async () => {
@@ -556,10 +621,96 @@ describe('ModbusTransport 读写', () => {
     expect(client.writeCoil).toHaveBeenNthCalledWith(2, 7, false)
   })
 
-  it.each(['input', 'discrete'])('拒绝写入只读区域 %s', async (area) => {
+  it.each([
+    ['字符串', '0'],
+    ['布尔值', false],
+    ['NaN', Number.NaN],
+    ['小数', 2.5],
+    ['负数', -1],
+    ['超过上限', 65536],
+  ])('写入拒绝非法 addr：%s', async (_label, addr) => {
+    const client = createFakeClient()
+    const transport = new ModbusTransport(() => client)
+    transport.client = client
+
+    await expect(transport.write('holding', addr, [1]))
+      .rejects.toThrow('addr 必须是 0..65535 范围内的整数')
+    expectNoDriverCall(client)
+  })
+
+  it.each([
+    ['非数组', Uint8Array.from([1])],
+    ['空数组', []],
+    ['undefined 元素', [undefined]],
+    ['数值 2', [2]],
+    ['字符串 1', ['1']],
+    ['布尔值 true', [true]],
+    ['多个元素', [0, 1]],
+  ])('线圈写入拒绝非法 words：%s', async (_label, words) => {
+    const client = createFakeClient()
+    const transport = new ModbusTransport(() => client)
+    transport.client = client
+
+    await expect(transport.write('coil', 0, words))
+      .rejects.toThrow('coil words 必须是长度恰好为 1 的数组，元素只能是数值 0 或 1')
+    expectNoDriverCall(client)
+  })
+
+  it.each([
+    ['空数组', []],
+    ['TypedArray', Uint16Array.from([1])],
+    ['字符串元素', ['1']],
+    ['布尔元素', [true]],
+    ['负数元素', [-1]],
+    ['超过上限元素', [65536]],
+    ['小数元素', [1.5]],
+    ['超过 123 个元素', Array(124).fill(1)],
+  ])('保持寄存器写入拒绝非法 words：%s', async (_label, words) => {
+    const client = createFakeClient()
+    const transport = new ModbusTransport(() => client)
+    transport.client = client
+
+    await expect(transport.write('holding', 0, words)).rejects.toThrow(/holding words/)
+    expectNoDriverCall(client)
+  })
+
+  it('保持寄存器写入拒绝地址跨度越界', async () => {
+    const client = createFakeClient()
+    const transport = new ModbusTransport(() => client)
+    transport.client = client
+
+    await expect(transport.write('holding', 65535, [1, 2]))
+      .rejects.toThrow('addr + words.length - 1 不能超过 65535')
+    expectNoDriverCall(client)
+  })
+
+  it('允许一次写入 123 个保持寄存器至地址上限', async () => {
+    const words = Array.from({ length: 123 }, (_, index) => index)
+    const client = createFakeClient({ writeRegisters: vi.fn().mockResolvedValue({ address: 65413 }) })
+    const transport = new ModbusTransport(() => client)
+    transport.client = client
+
+    await transport.write('holding', 65413, words)
+
+    expect(client.writeRegisters).toHaveBeenCalledWith(65413, words)
+  })
+
+  it.each([
+    ['read', () => ['holding', 0, 1]],
+    ['write', () => ['holding', 0, [1]]],
+  ])('没有 client 时 %s 明确提示设备未连接', async (method, createArgs) => {
     const transport = new ModbusTransport(() => createFakeClient())
 
-    await expect(transport.write(area, 0, [1])).rejects.toThrow('该区域为只读，不支持写入')
+    await expect(transport[method](...createArgs())).rejects.toThrow('设备未连接')
+  })
+
+  it.each(['input', 'discrete'])('拒绝写入只读区域 %s', async (area) => {
+    const client = createFakeClient()
+    const transport = new ModbusTransport(() => client)
+    transport.client = client
+
+    await expect(transport.write(area, '非法地址', [])).rejects.toThrow('该区域为只读，不支持写入')
+    expectNoDriverCall(client)
   })
 
   it('拒绝未知写入区域且不调用任何设备写方法', async () => {
@@ -568,9 +719,7 @@ describe('ModbusTransport 读写', () => {
     transport.client = client
 
     await expect(transport.write('mystery', 0, [1])).rejects.toThrow('未知区域类型: mystery')
-    expect(client.writeCoil).not.toHaveBeenCalled()
-    expect(client.writeRegister).not.toHaveBeenCalled()
-    expect(client.writeRegisters).not.toHaveBeenCalled()
+    expectNoDriverCall(client)
   })
 })
 

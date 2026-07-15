@@ -8,6 +8,15 @@ const AREA_READERS = {
   input: { fn: 'readInputRegisters', isBit: false },
 }
 
+const MAX_ADDRESS = 65535
+const MAX_READ_COUNT = {
+  coil: 2000,
+  discrete: 2000,
+  holding: 125,
+  input: 125,
+}
+const MAX_WRITE_REGISTERS = 123
+
 // Modbus 异常码对应的中文现场提示
 const EXCEPTION_HINTS = {
   1: '非法功能码：设备不支持该操作',
@@ -70,6 +79,56 @@ function closeClient(client) {
 
 function destroyClient(client) {
   return runCleanup(client, 'destroy', '销毁连接失败')
+}
+
+function validateAddress(addr) {
+  if (typeof addr !== 'number' || !Number.isInteger(addr) || addr < 0 || addr > MAX_ADDRESS) {
+    throw new Error(`addr 必须是 0..${MAX_ADDRESS} 范围内的整数，当前值: ${String(addr)}`)
+  }
+}
+
+function validateReadPayload(area, addr, count) {
+  validateAddress(addr)
+
+  if (typeof count !== 'number' || !Number.isInteger(count)) {
+    throw new Error(`count 必须是整数，当前值: ${String(count)}`)
+  }
+
+  const maxCount = MAX_READ_COUNT[area]
+  if (count < 1 || count > maxCount) {
+    throw new Error(`${area} 读取 count 必须在 1..${maxCount} 范围内，当前值: ${count}`)
+  }
+  if (addr + count - 1 > MAX_ADDRESS) {
+    throw new Error(`读取地址跨度越界：addr + count - 1 不能超过 ${MAX_ADDRESS}（addr=${addr}, count=${count}）`)
+  }
+}
+
+function validateCoilWords(words) {
+  if (!Array.isArray(words) || words.length !== 1 || (words[0] !== 0 && words[0] !== 1)) {
+    throw new Error('coil words 必须是长度恰好为 1 的数组，元素只能是数值 0 或 1')
+  }
+}
+
+function validateHoldingWords(addr, words) {
+  if (!Array.isArray(words)) {
+    throw new Error('holding words 必须是普通数组，不支持 TypedArray 或其他类型')
+  }
+  if (words.length < 1 || words.length > MAX_WRITE_REGISTERS) {
+    throw new Error(`holding words 长度必须在 1..${MAX_WRITE_REGISTERS} 范围内，当前长度: ${words.length}`)
+  }
+
+  const invalidIndex = words.findIndex(value => (
+    typeof value !== 'number'
+    || !Number.isInteger(value)
+    || value < 0
+    || value > MAX_ADDRESS
+  ))
+  if (invalidIndex !== -1) {
+    throw new Error(`holding words[${invalidIndex}] 必须是 0..${MAX_ADDRESS} 范围内的整数，当前值: ${String(words[invalidIndex])}`)
+  }
+  if (addr + words.length - 1 > MAX_ADDRESS) {
+    throw new Error(`写入地址跨度越界：addr + words.length - 1 不能超过 ${MAX_ADDRESS}（addr=${addr}, words.length=${words.length}）`)
+  }
 }
 
 class ModbusTransport {
@@ -156,11 +215,14 @@ class ModbusTransport {
   async read(area, addr, count) {
     const reader = AREA_READERS[area]
     if (!reader) throw new Error(`未知区域类型: ${area}`)
+    validateReadPayload(area, addr, count)
 
     return this._enqueueOperation(() => this._readNow(reader, addr, count))
   }
 
   async _readNow(reader, addr, count) {
+    if (!this.client) throw new Error('设备未连接：无法执行 Modbus 读取')
+
     try {
       const result = await this.client[reader.fn](addr, count)
       if (reader.isBit) {
@@ -181,10 +243,19 @@ class ModbusTransport {
       throw new Error(`未知区域类型: ${area}`)
     }
 
+    validateAddress(addr)
+    if (area === 'coil') {
+      validateCoilWords(words)
+    } else {
+      validateHoldingWords(addr, words)
+    }
+
     return this._enqueueOperation(() => this._writeNow(area, addr, words))
   }
 
   async _writeNow(area, addr, words) {
+    if (!this.client) throw new Error('设备未连接：无法执行 Modbus 写入')
+
     try {
       if (area === 'coil') {
         return await this.client.writeCoil(addr, words[0] === 1)
