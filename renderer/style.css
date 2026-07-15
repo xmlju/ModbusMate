@@ -266,13 +266,13 @@ td select { padding: 2px 4px; margin-right: 4px; background: var(--surface-2); c
 .type-points-table-wrap th:nth-child(1), .type-points-table-wrap td:nth-child(1) { min-width: 120px; position: sticky; left: 0; background: var(--page); z-index: 1; }  /* 名称 */
 .type-points-table-wrap thead th:nth-child(1) { background: var(--surface-2); z-index: 3; }  /* 名称表头盖住 sticky 列 */
 .type-points-table-wrap th:nth-child(2), .type-points-table-wrap td:nth-child(2) { min-width: 110px; }  /* 区域 */
-.type-points-table-wrap th:nth-child(3), .type-points-table-wrap td:nth-child(3) { min-width: 64px; }   /* 地址 */
+.type-points-table-wrap th:nth-child(3), .type-points-table-wrap td:nth-child(3) { min-width: 40px; }   /* 地址 */
 .type-points-table-wrap th:nth-child(4), .type-points-table-wrap td:nth-child(4) { min-width: 80px; }   /* 类型 */
 .type-points-table-wrap th:nth-child(5), .type-points-table-wrap td:nth-child(5) { min-width: 52px; }   /* 字序 */
-.type-points-table-wrap th:nth-child(6), .type-points-table-wrap td:nth-child(6) { min-width: 40px; }   /* k */
-.type-points-table-wrap th:nth-child(7), .type-points-table-wrap td:nth-child(7) { min-width: 40px; }   /* b */
+.type-points-table-wrap th:nth-child(6), .type-points-table-wrap td:nth-child(6) { min-width: 28px; }   /* k */
+.type-points-table-wrap th:nth-child(7), .type-points-table-wrap td:nth-child(7) { min-width: 28px; }   /* b */
 .type-points-table-wrap th:nth-child(8), .type-points-table-wrap td:nth-child(8) { min-width: 52px; }   /* 小数位 */
-.type-points-table-wrap th:nth-child(9), .type-points-table-wrap td:nth-child(9) { min-width: 40px; }   /* 单位 */
+.type-points-table-wrap th:nth-child(9), .type-points-table-wrap td:nth-child(9) { min-width: 32px; }   /* 单位 */
 .type-points-table-wrap th:nth-child(10), .type-points-table-wrap td:nth-child(10) { min-width: 40px; } /* 显示 */
 .type-points-table-wrap th:nth-child(11), .type-points-table-wrap td:nth-child(11) { min-width: 64px; } /* 操作 */
 .kb-help { display: inline-block; cursor: help; color: var(--accent); font-size: 12px; margin-left: 2px; font-weight: 700; }
@@ -292,6 +292,11 @@ td select { padding: 2px 4px; margin-right: 4px; background: var(--surface-2); c
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--surface-2); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--ink-3); }
+
+/* 类型编辑表格滚动条加粗（横向尤其需要易操作） */
+.type-points-table-wrap::-webkit-scrollbar { width: 12px; height: 12px; }
+.type-points-table-wrap::-webkit-scrollbar-thumb { background: var(--ink-3); border-radius: 6px; }
+.type-points-table-wrap::-webkit-scrollbar-thumb:hover { background: var(--ink-2); }
 
 /* ── 连接状态文本 ── */
 #statusText { color: var(--ink-2); }
