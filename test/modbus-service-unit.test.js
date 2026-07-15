@@ -308,6 +308,112 @@ describe('ModbusService facade 连接生命周期', () => {
 })
 
 describe('ModbusService facade 读写委托', () => {
+  it('reconnect 完成后才执行随后的 read', async () => {
+    const reconnectGate = createDeferred()
+    const reconnectStarted = createDeferred()
+    const transport = createFakeTransport({
+      reconnect: vi.fn().mockImplementation(async () => {
+        reconnectStarted.resolve()
+        await reconnectGate.promise
+      }),
+      read: vi.fn().mockResolvedValue([123]),
+    })
+    const service = new ModbusService(vi.fn())
+    service.transport = transport
+    service.params = { transport: 'tcp', host: 'device', port: 502, unitId: 1, timeout: 2000 }
+
+    const reconnecting = service.reconnect()
+    await reconnectStarted.promise
+    const reading = service.read('holding', 0, 1)
+
+    expect(transport.read).not.toHaveBeenCalled()
+    reconnectGate.resolve()
+    await reconnecting
+    await expect(reading).resolves.toEqual([123])
+    expect(transport.read).toHaveBeenCalledWith('holding', 0, 1)
+  })
+
+  it('connect 新配置完成后才把随后的 write 委托给新传输', async () => {
+    const connectGate = createDeferred()
+    const connectStarted = createDeferred()
+    const oldTransport = createFakeTransport()
+    const newTransport = createFakeTransport({
+      connect: vi.fn().mockImplementation(async () => {
+        connectStarted.resolve()
+        await connectGate.promise
+      }),
+      write: vi.fn().mockResolvedValue({ address: 4 }),
+    })
+    const service = new ModbusService(vi.fn(() => newTransport))
+    service.transport = oldTransport
+    service.params = { transport: 'tcp', host: 'old', port: 502, unitId: 1, timeout: 2000 }
+
+    const connecting = service.connect({ host: 'new' })
+    const writing = service.write('holding', 4, [88])
+    await connectStarted.promise
+
+    expect(oldTransport.write).not.toHaveBeenCalled()
+    expect(newTransport.write).not.toHaveBeenCalled()
+    connectGate.resolve()
+    await connecting
+    await expect(writing).resolves.toEqual({ address: 4 })
+    expect(oldTransport.write).not.toHaveBeenCalled()
+    expect(newTransport.write).toHaveBeenCalledWith('holding', 4, [88])
+  })
+
+  it('disconnect 等待在途 service read 完成', async () => {
+    const readGate = createDeferred()
+    const readStarted = createDeferred()
+    const transport = createFakeTransport({
+      read: vi.fn().mockImplementation(async () => {
+        readStarted.resolve()
+        await readGate.promise
+        return [456]
+      }),
+    })
+    const service = new ModbusService(vi.fn())
+    service.transport = transport
+
+    const reading = service.read('holding', 0, 1)
+    await readStarted.promise
+    const disconnecting = service.disconnect()
+    await Promise.resolve()
+
+    expect(transport.disconnect).not.toHaveBeenCalled()
+    readGate.resolve()
+    await expect(reading).resolves.toEqual([456])
+    await disconnecting
+    expect(transport.disconnect).toHaveBeenCalledOnce()
+    expect(service.transport).toBeNull()
+  })
+
+  it('单次操作失败后继续执行队列中的后续操作', async () => {
+    const failure = new Error('首次读取失败')
+    const firstGate = createDeferred()
+    const firstStarted = createDeferred()
+    const transport = createFakeTransport({
+      read: vi.fn()
+        .mockImplementationOnce(async () => {
+          firstStarted.resolve()
+          await firstGate.promise
+          throw failure
+        })
+        .mockResolvedValueOnce([789]),
+    })
+    const service = new ModbusService(vi.fn())
+    service.transport = transport
+
+    const failedRead = service.read('holding', 0, 1)
+    await firstStarted.promise
+    const recoveredRead = service.read('holding', 1, 1)
+
+    expect(transport.read).toHaveBeenCalledTimes(1)
+    firstGate.resolve()
+    await expect(failedRead).rejects.toBe(failure)
+    await expect(recoveredRead).resolves.toEqual([789])
+    expect(transport.read).toHaveBeenCalledTimes(2)
+  })
+
   it('没有传输时 read/write 都给出设备未连接错误', async () => {
     const service = new ModbusService(vi.fn())
 

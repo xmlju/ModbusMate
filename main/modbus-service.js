@@ -7,7 +7,7 @@ class ModbusService {
     this.factory = factory
     this.transport = null
     this.params = null
-    this._lifecycleQueue = Promise.resolve()
+    this._operationQueue = Promise.resolve()
   }
 
   get connected() {
@@ -23,7 +23,7 @@ class ModbusService {
       return Promise.reject(err)
     }
 
-    return this._enqueueLifecycle(() => this._connectNow(params))
+    return this._enqueueOperation(() => this._connectNow(params))
   }
 
   async _connectNow(params) {
@@ -38,7 +38,7 @@ class ModbusService {
   }
 
   reconnect() {
-    return this._enqueueLifecycle(() => this._reconnectNow())
+    return this._enqueueOperation(() => this._reconnectNow())
   }
 
   async _reconnectNow() {
@@ -49,7 +49,7 @@ class ModbusService {
   }
 
   disconnect() {
-    return this._enqueueLifecycle(() => this._disconnectNow())
+    return this._enqueueOperation(() => this._disconnectNow())
   }
 
   async _disconnectNow() {
@@ -60,19 +60,27 @@ class ModbusService {
     if (this.transport === transport) this.transport = null
   }
 
-  _enqueueLifecycle(operation) {
-    const pending = this._lifecycleQueue.then(operation)
+  _enqueueOperation(operation) {
+    const pending = this._operationQueue.then(operation)
     // 当前调用的错误交给调用者，队列本身恢复后继续执行后续操作
-    this._lifecycleQueue = pending.catch(() => {})
+    this._operationQueue = pending.catch(() => {})
     return pending
   }
 
-  async read(area, addr, count) {
+  read(area, addr, count) {
+    return this._enqueueOperation(() => this._readNow(area, addr, count))
+  }
+
+  async _readNow(area, addr, count) {
     if (!this.transport) throw new Error('设备未连接')
     return this.transport.read(area, addr, count)
   }
 
-  async write(area, addr, words) {
+  write(area, addr, words) {
+    return this._enqueueOperation(() => this._writeNow(area, addr, words))
+  }
+
+  async _writeNow(area, addr, words) {
     if (!this.transport) throw new Error('设备未连接')
     return this.transport.write(area, addr, words)
   }
