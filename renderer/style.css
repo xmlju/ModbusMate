@@ -269,8 +269,8 @@ td select { padding: 2px 4px; margin-right: 4px; background: var(--surface-2); c
 .type-points-table-wrap th:nth-child(3), .type-points-table-wrap td:nth-child(3) { min-width: 40px; }   /* 地址 */
 .type-points-table-wrap th:nth-child(4), .type-points-table-wrap td:nth-child(4) { min-width: 80px; }   /* 类型 */
 .type-points-table-wrap th:nth-child(5), .type-points-table-wrap td:nth-child(5) { min-width: 52px; }   /* 字序 */
-.type-points-table-wrap th:nth-child(6), .type-points-table-wrap td:nth-child(6) { min-width: 28px; }   /* k */
-.type-points-table-wrap th:nth-child(7), .type-points-table-wrap td:nth-child(7) { min-width: 28px; }   /* b */
+.type-points-table-wrap th:nth-child(6), .type-points-table-wrap td:nth-child(6) { min-width: 72px; }   /* 比例系数k */
+.type-points-table-wrap th:nth-child(7), .type-points-table-wrap td:nth-child(7) { min-width: 60px; }   /* 偏移量b */
 .type-points-table-wrap th:nth-child(8), .type-points-table-wrap td:nth-child(8) { min-width: 52px; }   /* 小数位 */
 .type-points-table-wrap th:nth-child(9), .type-points-table-wrap td:nth-child(9) { min-width: 32px; }   /* 单位 */
 .type-points-table-wrap th:nth-child(10), .type-points-table-wrap td:nth-child(10) { min-width: 40px; } /* 显示 */
