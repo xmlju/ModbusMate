@@ -11,7 +11,7 @@
   <div class="shell">
     <!-- 左侧全局导航 -->
     <nav class="nav">
-      <div class="brand">Modbus 设备调试器<small>企业内部 · Modbus-TCP 监控调试</small></div>
+      <div class="brand">Modbus 设备调试器<small>企业内部 · Modbus TCP / RTU 监控调试</small></div>
       <div class="nav-item" data-page="devOverview">📋 设备总览</div>
       <div class="nav-item" data-page="devDebug">🔧 设备调试</div>
       <div class="nav-item active" data-page="workbench">🧪 调试工作台</div>
@@ -71,10 +71,33 @@
       <!-- ═══ 页3：调试工作台（v0.1 全部功能 + 日志栏） ═══ -->
       <div id="workbenchPage" class="page active">
         <!-- 连接栏 -->
-        <div class="bar">
-          <label>IP <input id="host" placeholder="192.168.1.10"></label>
-          <label>端口 <input id="port" type="number" value="502"></label>
-          <label>从站ID <input id="unitId" type="number" value="1"></label>
+        <div class="bar connection-bar">
+          <label>通信方式
+            <select id="transport" aria-label="通信方式">
+              <option value="tcp">TCP</option>
+              <option value="rtu">RTU（USB/RS485）</option>
+            </select>
+          </label>
+          <div id="tcpFields" class="connection-fields">
+            <label>IP <input id="host" placeholder="192.168.1.10" autocomplete="off"></label>
+            <label>端口 <input id="port" type="number" value="502" min="1" max="65535"></label>
+          </div>
+          <div id="rtuFields" class="connection-fields hidden" aria-hidden="true">
+            <label>串口
+              <select id="serialPath" disabled aria-label="串口">
+                <option value="">请选择串口</option>
+              </select>
+            </label>
+            <button id="refreshSerialBtn" class="btn ghost sm" type="button" disabled aria-label="刷新串口列表">刷新串口</button>
+            <label>波特率
+              <input id="baudRate" type="number" min="110" max="4000000" step="1" value="9600" disabled>
+            </label>
+            <label>数据位 <select id="dataBits" disabled><option value="7">7</option><option value="8" selected>8</option></select></label>
+            <label>校验 <select id="parity" disabled><option value="none" selected>无</option><option value="even">偶</option><option value="odd">奇</option></select></label>
+            <label>停止位 <select id="stopBits" disabled><option value="1" selected>1</option><option value="2">2</option></select></label>
+          </div>
+          <label>从站ID <input id="unitId" type="number" value="1" min="0" max="255"></label>
+          <label>超时(ms) <input id="timeout" type="number" value="2000" min="100"></label>
           <button id="connectBtn">连接</button>
           <span id="statusDot" class="dot idle"></span>
           <span id="statusText">未连接</span>
@@ -266,6 +289,7 @@
   </div>
 
   <script src="web-api.js"></script>
+  <script src="connection-ui.js"></script>
   <script src="codec.js"></script>
   <script src="read-plan.js"></script>
   <script src="seed-data.js"></script>

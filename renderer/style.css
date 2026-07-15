@@ -95,7 +95,20 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .bar input, .bar select { padding: 4px 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-2); color: var(--ink-1); width: 90px; }
 .bar input[type="number"] { width: 72px; }
 #host { width: 145px; min-width: 0; }
+#transport { width: 130px; }
+#serialPath { width: 210px; max-width: 32vw; }
+#baudRate { width: 94px; }
+.connection-fields { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.connection-bar { row-gap: 8px; }
 .right { margin-left: auto; }
+
+@media (max-width: 940px) {
+  .main { padding-left: 12px; padding-right: 12px; }
+  .connection-bar { align-items: flex-start; }
+  .connection-fields { width: 100%; order: 2; }
+  .connection-bar .right { margin-left: 0; }
+  #serialPath { max-width: 300px; }
+}
 
 /* ── 设备组卡（设备总览页） ── */
 .dev-group { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 20px; overflow: hidden; flex-shrink: 0; }

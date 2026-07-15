@@ -22,9 +22,24 @@ async function startApp() {
   // 首次启动自动填充示例数据
   await SeedData.ensureSeedData()
   const cfg = await window.api.loadConfig()
-  if (cfg.host) $('host').value = cfg.host
-  if (cfg.port) $('port').value = cfg.port
-  if (cfg.unitId) $('unitId').value = cfg.unitId
+  const connectionView = ConnectionUI.normalizeConnectionView(cfg)
+  $('transport').value = connectionView.transport
+  $('host').value = connectionView.host
+  $('port').value = connectionView.port
+  if (connectionView.serialPath) {
+    const currentPort = document.createElement('option')
+    currentPort.value = connectionView.serialPath
+    currentPort.textContent = `${connectionView.serialPath}（当前不可用）`
+    $('serialPath').appendChild(currentPort)
+    $('serialPath').value = connectionView.serialPath
+  }
+  $('baudRate').value = connectionView.baudRate
+  $('dataBits').value = connectionView.dataBits
+  $('parity').value = connectionView.parity
+  $('stopBits').value = connectionView.stopBits
+  $('unitId').value = connectionView.unitId
+  $('timeout').value = connectionView.timeout
+  updateConnectionFields(connectionView.transport)
   if (cfg.area) $('area').value = cfg.area
   if (cfg.addr !== undefined) $('startAddr').value = cfg.addr
   if (cfg.count) $('count').value = cfg.count
@@ -32,6 +47,9 @@ async function startApp() {
 
   // 调试工作台事件
   $('connectBtn').addEventListener('click', onConnectClick)
+  $('transport').addEventListener('change', () => updateConnectionFields($('transport').value, true))
+  $('refreshSerialBtn').addEventListener('click', refreshSerialPorts)
+  if (connectionView.transport === 'rtu') refreshSerialPorts()
   $('pollBtn').addEventListener('click', onPollClick)
   $('plcMode').addEventListener('change', () => { state.plcMode = $('plcMode').checked; renderTable() })
   $('logToggle').addEventListener('click', () => $('logPanel').classList.toggle('collapsed'))
@@ -116,6 +134,72 @@ async function startApp() {
 
   // ── 开发者署名点击 ──
   $('appFooter').addEventListener('click', () => alert('联系方式：yaomh592@gmail.com'))
+}
+
+const serialPortLoader = ConnectionUI.createSerialPortLoader(() => window.api.listSerialPorts())
+
+function updateConnectionFields(transport, autoRefresh = false) {
+  const normalized = ConnectionUI.normalizeTransport(transport)
+  const isRtu = normalized === 'rtu'
+  $('tcpFields').classList.toggle('hidden', isRtu)
+  $('tcpFields').setAttribute('aria-hidden', String(isRtu))
+  $('tcpFields').querySelectorAll('input, select, button').forEach(control => { control.disabled = isRtu })
+  $('rtuFields').classList.toggle('hidden', !isRtu)
+  $('rtuFields').setAttribute('aria-hidden', String(!isRtu))
+  $('rtuFields').querySelectorAll('input, select, button').forEach(control => { control.disabled = !isRtu })
+  $('unitId').min = isRtu ? '1' : '0'
+  $('unitId').max = isRtu ? '247' : '255'
+  if (isRtu && autoRefresh && !serialPortLoader.isLoading()) refreshSerialPorts()
+}
+
+function serialPortLabel(port) {
+  const details = [
+    port.manufacturer,
+    port.vendorId ? `VID ${port.vendorId}` : '',
+    port.productId ? `PID ${port.productId}` : '',
+  ].filter(Boolean)
+  const suffix = port.unavailable ? '（当前不可用）' : details.length ? ` · ${details.join(' · ')}` : ''
+  return `${port.path}${suffix}`
+}
+
+function renderSerialPorts(ports) {
+  const select = $('serialPath')
+  const current = select.value
+  const options = ConnectionUI.mergeSerialPortOptions(current, ports)
+  select.replaceChildren()
+  if (!options.length) {
+    const placeholder = document.createElement('option')
+    placeholder.value = ''
+    placeholder.textContent = '未发现串口，请连接 USB/RS485 设备后刷新'
+    select.appendChild(placeholder)
+    return
+  }
+  options.forEach(port => {
+    const option = document.createElement('option')
+    option.value = port.path
+    option.textContent = serialPortLabel(port)
+    select.appendChild(option)
+  })
+  if (options.some(port => port.path === current)) select.value = current
+}
+
+async function refreshSerialPorts() {
+  const button = $('refreshSerialBtn')
+  if (serialPortLoader.isLoading()) return serialPortLoader.load()
+  button.disabled = true
+  button.textContent = '刷新中…'
+  try {
+    const ports = await serialPortLoader.load()
+    renderSerialPorts(ports)
+    log('info', `串口列表已刷新，发现 ${ports.length} 个串口`)
+    return ports
+  } catch (err) {
+    log('error', `刷新串口失败：${cleanErr(err.message)}；请检查 USB/RS485 转换器、驱动和系统串口权限`)
+    return null
+  } finally {
+    button.textContent = '刷新串口'
+    button.disabled = $('transport').value !== 'rtu'
+  }
 }
 
 // ── 导航页切换 ──
@@ -332,16 +416,45 @@ async function confirmDDWrite() {
 }
 
 // ── 连接 ──
-async function onConnectClick() {
+const connectionAction = ConnectionUI.createExclusiveRunner()
+
+function onConnectClick() {
+  if (connectionAction.isRunning()) return connectionAction.run(() => undefined)
+  const button = $('connectBtn')
+  button.disabled = true
+  const pending = connectionAction.run(performConnectionAction)
+  const restoreButton = () => {
+    if (!connectionAction.isRunning()) button.disabled = false
+  }
+  pending.then(restoreButton, restoreButton)
+  return pending
+}
+
+async function performConnectionAction() {
   if (state.connected) return window.api.disconnect()
-  const params = { host: $('host').value.trim(), port: Number($('port').value), unitId: Number($('unitId').value) }
-  if (!params.host) return log('error', '请输入设备 IP 地址')
+  let params
+  try {
+    params = ConnectionUI.buildConnectionConfig({
+      transport: $('transport').value,
+      host: $('host').value,
+      port: $('port').value,
+      serialPath: $('serialPath').value,
+      baudRate: $('baudRate').value,
+      dataBits: $('dataBits').value,
+      parity: $('parity').value,
+      stopBits: $('stopBits').value,
+      unitId: $('unitId').value,
+      timeout: $('timeout').value,
+    })
+  } catch (err) {
+    return log('error', `连接参数错误：${cleanErr(err.message)}`)
+  }
   setStatus('connecting')
   try {
     await window.api.connect(params)
     const cfg = await window.api.loadConfig()
-    await window.api.saveConfig({ ...cfg, ...params })
-    log('info', `已连接 ${params.host}:${params.port}（从站 ${params.unitId}）`)
+    await window.api.saveConfig(ConnectionUI.mergeConnectionIntoConfig(cfg, params))
+    log('info', `已连接 ${ConnectionUI.formatConnectionTarget(params)}`)
   } catch (err) {
     setStatus('error')
     log('error', `连接失败：${friendlyConnectError(cleanErr(err.message), params)}`)
@@ -349,6 +462,13 @@ async function onConnectClick() {
 }
 
 function friendlyConnectError(msg, p) {
+  if (p.transport === 'rtu') {
+    if (/EACCES|permission denied|access denied/i.test(msg)) return `${p.serialPath} 串口权限不足，请关闭占用程序或检查系统权限`
+    if (/EBUSY|resource busy|already open/i.test(msg)) return `${p.serialPath} 串口被占用，请关闭其他串口工具后重试`
+    if (/ENOENT|no such file|cannot open/i.test(msg)) return `找不到串口 ${p.serialPath}，请重新插拔 USB/RS485 转换器并刷新串口列表`
+    if (/timeout|timed out/i.test(msg)) return `${p.serialPath} 通信超时，请检查 RS485 A/B 接线、波特率、校验位和从站 ID`
+    return msg
+  }
   if (msg.includes('ECONNREFUSED')) return `${p.host}:${p.port} 拒绝连接，请确认设备已开启 Modbus-TCP 服务、端口号正确`
   if (msg.includes('EHOSTUNREACH') || msg.includes('ETIMEDOUT') || /Timed out/i.test(msg)) return `${p.host}:${p.port} 无响应，请检查设备电源、网线和 IP 设置`
   if (msg.includes('ENOTFOUND')) return `找不到主机 ${p.host}，请检查 IP 地址`
