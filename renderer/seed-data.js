@@ -36,35 +36,26 @@ const SeedData = (() => {
     { id: sampleId(), typeId: 'sample_plc', name: 'PLC-1', host: '127.0.0.1', port: 8503, unitId: 1, interval: 1000 },
   ]
 
-  // ── 确保示例数据始终存在（每次启动检查，缺失则补充）──
+  // ── 示例数据只在首次启动（从未填充过）时写入一次；用户之后删除不会被复活 ──
   async function ensureSeedData() {
     try {
       const cfg = await window.api.loadConfig()
-      let changed = false
+      if (cfg.seedDataInitialized) return null
 
-      // 补充缺失的类型
       if (!Array.isArray(cfg.deviceTypes)) cfg.deviceTypes = []
       sampleTypes.forEach(st => {
-        if (!cfg.deviceTypes.find(t => t.id === st.id)) {
-          cfg.deviceTypes.push(st)
-          changed = true
-        }
+        if (!cfg.deviceTypes.find(t => t.id === st.id)) cfg.deviceTypes.push(st)
       })
 
-      // 补充缺失的实例
       if (!Array.isArray(cfg.deviceInstances)) cfg.deviceInstances = []
       sampleInstances.forEach(si => {
-        if (!cfg.deviceInstances.find(i => i.id === si.id)) {
-          cfg.deviceInstances.push(si)
-          changed = true
-        }
+        if (!cfg.deviceInstances.find(i => i.id === si.id)) cfg.deviceInstances.push(si)
       })
 
-      if (changed) {
-        await window.api.saveConfig(cfg)
-        console.log('[SeedData] 已补充缺失的示例数据：电池柜 + PLC 控制器')
-        return { deviceTypes: sampleTypes, deviceInstances: sampleInstances }
-      }
+      cfg.seedDataInitialized = true
+      await window.api.saveConfig(cfg)
+      console.log('[SeedData] 首次启动，已写入示例数据：电池柜 + PLC 控制器')
+      return { deviceTypes: sampleTypes, deviceInstances: sampleInstances }
     } catch (e) {
       console.error('[SeedData] 种子数据填充失败:', e)
     }

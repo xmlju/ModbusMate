@@ -3,15 +3,19 @@
 // 注意：错误事件命名为 pollError（EventEmitter 的 'error' 无监听会崩进程）
 const { EventEmitter } = require('events')
 const ModbusService = require('./modbus-service')
+const { SharedConnectionPool } = require('./shared-connection-pool')
 
 const OFFLINE_THRESHOLD = 3     // 连续失败次数判定断线
 const RETRY_INTERVAL = 5000     // 重连间隔 ms
 
 class DeviceManager extends EventEmitter {
-  // createService 可注入（单测用 stub 替换真实 ModbusService）
+  // createService 可注入（单测用 stub 替换真实 ModbusService）。
+  // 连接参数完全相同的实例（同一物理串口/TCP端点+从站ID）通过连接池共享底层连接，
+  // 避免 RS485 等独占型端口被多个实例并发打开。
   constructor(createService = () => new ModbusService()) {
     super()
     this.createService = createService
+    this.pool = new SharedConnectionPool(createService)
     this.instances = new Map()
     this.generations = new Map()       // id → 当前操作代次；调用 start/stop 时立即更新
     this.lifecycleQueues = new Map()   // id → 生命周期 FIFO 队尾 Promise
@@ -21,10 +25,11 @@ class DeviceManager extends EventEmitter {
   start(id, cfg) {
     const previousGeneration = this.generations.get(id)
     const generation = this._nextGeneration(id)
-    // 服务在入队前创建，让并发 start 各自拥有且最终清理自己的资源。
+    // 句柄在入队前创建，让并发 start 各自拥有且最终清理自己的资源；
+    // 是否与其他实例共享底层连接由连接池按连接参数决定，句柄接口与独立 service 一致。
     let service
     try {
-      service = this.createService()
+      service = this.pool.createHandle(cfg)
     } catch (err) {
       // 工厂同步失败尚未进入队列：若旧实例/意图存在则恢复旧代，空 manager 才删除。
       // 若工厂内部已触发更新一代，则不能覆盖那一代的 intent。

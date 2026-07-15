@@ -137,7 +137,7 @@ describe('DeviceManager', () => {
 
     await expect(dm.stop('dev1')).rejects.toBe(disconnectError)
 
-    expect(dm.instances.get('dev1').service).toBe(svc)
+    expect(dm.instances.get('dev1').service.service).toBe(svc)
     expect(states.filter(state => state === 'disconnected')).toHaveLength(0)
     expect(svc.disconnect).toHaveBeenCalledOnce()
 
@@ -221,7 +221,7 @@ describe('DeviceManager', () => {
     await starting
 
     expect(dm.generations.get('dev1')).toBe(pendingGeneration)
-    expect(dm.instances.get('dev1').service).toBe(svc)
+    expect(dm.instances.get('dev1').service.service).toBe(svc)
     expect(states).toEqual(['connected'])
     await dm.stopAll()
   })
@@ -259,7 +259,7 @@ describe('DeviceManager', () => {
     expect(first.disconnect).toHaveBeenCalledOnce()
     expect(second.connect).toHaveBeenCalledOnce()
     expect(states.filter(state => state === 'connected')).toHaveLength(1)
-    expect(dm.instances.get('dev1').service).toBe(second)
+    expect(dm.instances.get('dev1').service.service).toBe(second)
     expect(vi.getTimerCount()).toBe(1)
 
     await dm.stopAll()
@@ -359,7 +359,7 @@ describe('DeviceManager', () => {
     await secondStart
 
     expect(second.connect).toHaveBeenCalledOnce()
-    expect(dm.instances.get('dev1').service).toBe(second)
+    expect(dm.instances.get('dev1').service.service).toBe(second)
     await dm.stopAll()
   })
 
