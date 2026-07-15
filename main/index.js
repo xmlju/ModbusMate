@@ -5,6 +5,7 @@ const fs = require('fs')
 const ModbusService = require('./modbus-service')
 const Poller = require('./poller')
 const DeviceManager = require('./device-manager')
+const { listSerialPorts } = require('./serial-ports')
 
 const service = new ModbusService()
 const poller = new Poller(service)
@@ -43,6 +44,7 @@ function createWindow() {
 function send(channel, payload) { win?.webContents.send(channel, payload) }
 
 function registerIpc() {
+  ipcMain.handle('serial:list', () => listSerialPorts())
   ipcMain.handle('modbus:connect', async (_e, params) => {
     await service.connect(params)
     send('modbus:status', { state: 'connected' })

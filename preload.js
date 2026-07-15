@@ -2,6 +2,7 @@
 const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('api', {
+  listSerialPorts: () => ipcRenderer.invoke('serial:list'),
   connect:          p    => ipcRenderer.invoke('modbus:connect', p),
   disconnect:       ()   => ipcRenderer.invoke('modbus:disconnect'),
   startPoll:        c    => ipcRenderer.invoke('modbus:startPoll', c),
