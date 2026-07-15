@@ -259,7 +259,7 @@ td select { padding: 2px 4px; margin-right: 4px; background: var(--surface-2); c
 /* max-content 让列按内容自然撑开，超宽时由 wrap 横向滚动兜底 */
 .type-points-table-wrap table { width: max-content; min-width: 100%; border-collapse: collapse; }
 .type-points-table-wrap th, .type-points-table-wrap td { padding: 4px 6px; border: 1px solid var(--border); text-align: left; white-space: nowrap; font-size: 12px; }
-.type-points-table-wrap th { background: var(--surface-2); position: sticky; top: 0; color: var(--ink-2); z-index: 2; }
+.type-points-table-wrap th { background: var(--surface-2); position: sticky; top: 0; color: var(--ink-2); z-index: 2; text-align: center; }
 .type-points-table-wrap input, .type-points-table-wrap select { padding: 2px 4px; border: 1px solid var(--border); border-radius: 3px; width: 100%; background: var(--surface-2); color: var(--ink-1); font-size: 12px; }
 .type-points-table-wrap button { font-size: 12px; }
 /* 各列最小宽度：名称/区域给足中文空间，数字列紧凑 */
