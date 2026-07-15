@@ -7,6 +7,10 @@ const { SharedConnectionPool } = require('./shared-connection-pool')
 
 const OFFLINE_THRESHOLD = 3     // 连续失败次数判定断线
 const RETRY_INTERVAL = 5000     // 重连间隔 ms
+// 同一轮里连续读取多个数据块时，块之间的最小间隔（ms）。
+// 部分 RTU 从站要求主机轮询间隔不小于一定字节时间（如 HS-ESS/PCS 要求 200 字节时间，
+// 9600 波特率下约 208ms），连续背靠背发送请求会导致从站来不及应答而大面积超时。
+const DEFAULT_BLOCK_GAP = 250
 
 class DeviceManager extends EventEmitter {
   // createService 可注入（单测用 stub 替换真实 ModbusService）。
@@ -240,14 +244,27 @@ class DeviceManager extends EventEmitter {
     return tickPromise
   }
 
+  _delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms))
+  }
+
   async _runTick(id, inst) {
     inst.busy = true
     try {
       const blocks = []
-      for (const b of inst.cfg.blocks) {
+      const list = inst.cfg.blocks
+      // 块间间隔：cfg.blockGap 可覆盖，缺省用 DEFAULT_BLOCK_GAP；设为 0 可关闭
+      const gap = inst.cfg.blockGap != null ? inst.cfg.blockGap : DEFAULT_BLOCK_GAP
+      for (let i = 0; i < list.length; i++) {
+        const b = list[i]
         const values = await inst.service.read(b.area, b.addr, b.count)
         if (!this._isCurrent(id, inst)) return
         blocks.push({ ...b, values })
+        // 仅在块之间插入间隔（最后一块之后不需要），满足从站最小轮询间隔要求
+        if (gap > 0 && i < list.length - 1) {
+          await this._delay(gap)
+          if (!this._isCurrent(id, inst)) return
+        }
       }
       if (!this._isCurrent(id, inst)) return
       inst.failCount = 0

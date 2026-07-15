@@ -82,6 +82,54 @@ describe('DeviceManager', () => {
     await dm.stopAll()
   })
 
+  it('多块采集时在块之间插入间隔，满足从站最小轮询间隔要求', async () => {
+    const svc = stubService()
+    const dm = new DeviceManager(() => svc)
+    // 用立即 resolve 的 _delay 替身，既验证被调用又不阻塞 fake timer
+    const delaySpy = vi.spyOn(dm, '_delay').mockResolvedValue(undefined)
+    const onData = vi.fn()
+    dm.on('data', onData)
+    const multiBlock = { ...CFG, blocks: [
+      { area: 'holding', addr: 0, count: 3 },
+      { area: 'holding', addr: 100, count: 3 },
+      { area: 'holding', addr: 200, count: 3 },
+    ] }
+    await dm.start('dev1', multiBlock)
+    await vi.advanceTimersByTimeAsync(1500)
+
+    expect(onData).toHaveBeenCalled()
+    expect(onData.mock.calls[0][0].blocks).toHaveLength(3)
+    // 3 块之间有 2 个间隔，每个用默认 250ms
+    const firstTickDelays = delaySpy.mock.calls.slice(0, 2)
+    expect(firstTickDelays).toEqual([[250], [250]])
+    await dm.stopAll()
+  })
+
+  it('单块采集不插入块间间隔', async () => {
+    const svc = stubService()
+    const dm = new DeviceManager(() => svc)
+    const delaySpy = vi.spyOn(dm, '_delay').mockResolvedValue(undefined)
+    dm.on('data', () => {})
+    await dm.start('dev1', CFG)
+    await vi.advanceTimersByTimeAsync(1500)
+    expect(delaySpy).not.toHaveBeenCalled()
+    await dm.stopAll()
+  })
+
+  it('cfg.blockGap=0 可关闭块间间隔', async () => {
+    const svc = stubService()
+    const dm = new DeviceManager(() => svc)
+    const delaySpy = vi.spyOn(dm, '_delay').mockResolvedValue(undefined)
+    dm.on('data', () => {})
+    await dm.start('dev1', { ...CFG, blockGap: 0, blocks: [
+      { area: 'holding', addr: 0, count: 3 },
+      { area: 'holding', addr: 100, count: 3 },
+    ] })
+    await vi.advanceTimersByTimeAsync(1500)
+    expect(delaySpy).not.toHaveBeenCalled()
+    await dm.stopAll()
+  })
+
   it('多实例并发独立采集', async () => {
     const svcs = { a: stubService({ read: vi.fn().mockResolvedValue([7]) }), b: stubService({ read: vi.fn().mockResolvedValue([8]) }) }
     let n = 0
