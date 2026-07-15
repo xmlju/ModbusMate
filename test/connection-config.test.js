@@ -51,9 +51,23 @@ describe('normalizeConnectionConfig', () => {
       .toThrow('RTU 校验位 parity 只能是 none、even 或 odd')
   })
 
-  it('unitId 为 248 时抛出详细中文错误', () => {
-    expect(() => normalizeConnectionConfig({ host: '127.0.0.1', unitId: 248 }))
-      .toThrow('从站地址 unitId 必须是 1 到 247 之间的整数')
+  it.each([0, 247, 248, 255])('TCP 从站地址 unitId 为 %s 时合法', (unitId) => {
+    expect(normalizeConnectionConfig({ host: '127.0.0.1', unitId }).unitId).toBe(unitId)
+  })
+
+  it.each([-1, 256])('TCP 从站地址 unitId 为 %s 时抛出详细中文错误', (unitId) => {
+    expect(() => normalizeConnectionConfig({ host: '127.0.0.1', unitId }))
+      .toThrow('TCP 从站地址 unitId 必须是 0 到 255 之间的整数')
+  })
+
+  it.each([1, 247])('RTU 从站地址 unitId 为 %s 时合法', (unitId) => {
+    expect(normalizeConnectionConfig({ transport: 'rtu', serialPath: 'COM1', unitId }).unitId)
+      .toBe(unitId)
+  })
+
+  it.each([0, 248])('RTU 从站地址 unitId 为 %s 时抛出详细中文错误', (unitId) => {
+    expect(() => normalizeConnectionConfig({ transport: 'rtu', serialPath: 'COM1', unitId }))
+      .toThrow('RTU 从站地址 unitId 必须是 1 到 247 之间的整数')
   })
 
   it.each([99, 60001])('timeout 为 %s 时抛出包含“超时”的中文错误', (timeout) => {

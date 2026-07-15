@@ -36,7 +36,9 @@ function normalizeConnectionConfig(raw = {}) {
     throw new Error(`未知连接类型 transport：${String(transport)}，仅支持 tcp 或 rtu`)
   }
 
-  const unitId = normalizeInteger(raw.unitId, 1, '从站地址 unitId', 1, 247)
+  const unitId = transport === 'tcp'
+    ? normalizeInteger(raw.unitId, 1, 'TCP 从站地址 unitId', 0, 255)
+    : normalizeInteger(raw.unitId, 1, 'RTU 从站地址 unitId', 1, 247)
   const timeout = normalizeInteger(raw.timeout, 2000, '请求超时 timeout', 100, 60000)
 
   if (transport === 'tcp') {
