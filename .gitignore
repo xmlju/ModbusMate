@@ -5,6 +5,7 @@ release/
 codes.txt
 *.codes.txt
 .secret
+.worktrees/
 
 # 协议文档（内部资料，不上传公开仓库）
 *.pdf
