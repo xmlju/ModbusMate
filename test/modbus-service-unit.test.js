@@ -13,6 +13,16 @@ function createFakeTransport(overrides = {}) {
   }
 }
 
+function createDeferred() {
+  let resolve
+  let reject
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
+}
+
 describe('ModbusService facade 连接生命周期', () => {
   it('构造时保存工厂，并在没有传输实例时保持未连接', () => {
     const factory = vi.fn()
@@ -187,6 +197,113 @@ describe('ModbusService facade 连接生命周期', () => {
     await expect(service.disconnect()).rejects.toBe(failure)
 
     expect(service.transport).toBe(transport)
+  })
+
+  it('并发 connect 按调用顺序执行，最终发布第二个传输并断开第一个', async () => {
+    const firstGate = createDeferred()
+    const firstTransport = createFakeTransport({
+      connect: vi.fn(() => firstGate.promise),
+    })
+    const secondTransport = createFakeTransport()
+    const factory = vi.fn()
+      .mockReturnValueOnce(firstTransport)
+      .mockReturnValueOnce(secondTransport)
+    const service = new ModbusService(factory)
+
+    const firstConnect = service.connect({ host: 'first' })
+    const secondConnect = service.connect({ host: 'second' })
+    await vi.waitFor(() => expect(firstTransport.connect).toHaveBeenCalledOnce())
+
+    const factoryCallsWhileFirstPending = factory.mock.calls.length
+    const secondStartedWhileFirstPending = secondTransport.connect.mock.calls.length
+
+    firstGate.resolve()
+    await Promise.all([firstConnect, secondConnect])
+
+    expect(factoryCallsWhileFirstPending).toBe(1)
+    expect(secondStartedWhileFirstPending).toBe(0)
+    expect(firstTransport.disconnect).toHaveBeenCalledOnce()
+    expect(secondTransport.connect).toHaveBeenCalledOnce()
+    expect(service.transport).toBe(secondTransport)
+    expect(service.params.host).toBe('second')
+  })
+
+  it('pending connect 后立即 disconnect，最终断开刚发布的传输', async () => {
+    const connectGate = createDeferred()
+    const transport = createFakeTransport({
+      connect: vi.fn(() => connectGate.promise),
+    })
+    const service = new ModbusService(() => transport)
+
+    const connecting = service.connect({ host: 'device' })
+    const disconnecting = service.disconnect()
+    await vi.waitFor(() => expect(transport.connect).toHaveBeenCalledOnce())
+
+    expect(transport.disconnect).not.toHaveBeenCalled()
+    connectGate.resolve()
+    await Promise.all([connecting, disconnecting])
+
+    expect(transport.disconnect).toHaveBeenCalledOnce()
+    expect(service.transport).toBeNull()
+  })
+
+  it('connect 后立即 reconnect，等待连接发布后在同一实例重连', async () => {
+    const connectGate = createDeferred()
+    const transport = createFakeTransport({
+      connect: vi.fn(() => connectGate.promise),
+    })
+    const service = new ModbusService(() => transport)
+
+    const connecting = service.connect({ host: 'device' })
+    const reconnecting = service.reconnect()
+    reconnecting.catch(() => {})
+    await vi.waitFor(() => expect(transport.connect).toHaveBeenCalledOnce())
+
+    expect(transport.reconnect).not.toHaveBeenCalled()
+    connectGate.resolve()
+    await Promise.all([connecting, reconnecting])
+
+    expect(transport.reconnect).toHaveBeenCalledOnce()
+    expect(service.transport).toBe(transport)
+  })
+
+  it('前一个 connect 失败后仍执行队列中的下一次 connect', async () => {
+    const failure = new Error('首次连接失败')
+    const failedTransport = createFakeTransport({
+      connect: vi.fn().mockRejectedValue(failure),
+    })
+    const recoveredTransport = createFakeTransport()
+    const factory = vi.fn()
+      .mockReturnValueOnce(failedTransport)
+      .mockReturnValueOnce(recoveredTransport)
+    const service = new ModbusService(factory)
+
+    const failedConnect = service.connect({ host: 'offline' })
+    const recoveredConnect = service.connect({ host: 'online' })
+
+    await expect(failedConnect).rejects.toBe(failure)
+    await expect(recoveredConnect).resolves.toBeUndefined()
+    expect(recoveredTransport.connect).toHaveBeenCalledOnce()
+    expect(service.transport).toBe(recoveredTransport)
+  })
+
+  it('前一个 disconnect 失败后仍执行队列中的下一次 disconnect', async () => {
+    const failure = new Error('首次关闭失败')
+    const transport = createFakeTransport({
+      disconnect: vi.fn()
+        .mockRejectedValueOnce(failure)
+        .mockResolvedValueOnce(undefined),
+    })
+    const service = new ModbusService(vi.fn())
+    service.transport = transport
+
+    const failedDisconnect = service.disconnect()
+    const recoveredDisconnect = service.disconnect()
+
+    await expect(failedDisconnect).rejects.toBe(failure)
+    await expect(recoveredDisconnect).resolves.toBeUndefined()
+    expect(transport.disconnect).toHaveBeenCalledTimes(2)
+    expect(service.transport).toBeNull()
   })
 })
 

@@ -7,17 +7,27 @@ class ModbusService {
     this.factory = factory
     this.transport = null
     this.params = null
+    this._lifecycleQueue = Promise.resolve()
   }
 
   get connected() {
     return this.transport?.connected === true
   }
 
-  async connect(raw) {
+  connect(raw) {
     // 必须先校验新配置，避免错误输入断开当前正常连接
-    const params = normalizeConnectionConfig(raw)
+    let params
+    try {
+      params = normalizeConnectionConfig(raw)
+    } catch (err) {
+      return Promise.reject(err)
+    }
 
-    await this.disconnect()
+    return this._enqueueLifecycle(() => this._connectNow(params))
+  }
+
+  async _connectNow(params) {
+    await this._disconnectNow()
 
     const transport = this.factory(params)
     await transport.connect(params)
@@ -27,19 +37,34 @@ class ModbusService {
     this.params = params
   }
 
-  async reconnect() {
+  reconnect() {
+    return this._enqueueLifecycle(() => this._reconnectNow())
+  }
+
+  async _reconnectNow() {
     if (!this.transport || !this.params) {
       throw new Error('尚未配置过连接参数')
     }
     return this.transport.reconnect()
   }
 
-  async disconnect() {
+  disconnect() {
+    return this._enqueueLifecycle(() => this._disconnectNow())
+  }
+
+  async _disconnectNow() {
     const transport = this.transport
     if (!transport) return
 
     await transport.disconnect()
     if (this.transport === transport) this.transport = null
+  }
+
+  _enqueueLifecycle(operation) {
+    const pending = this._lifecycleQueue.then(operation)
+    // 当前调用的错误交给调用者，队列本身恢复后继续执行后续操作
+    this._lifecycleQueue = pending.catch(() => {})
+    return pending
   }
 
   async read(area, addr, count) {
