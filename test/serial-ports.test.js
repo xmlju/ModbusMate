@@ -202,12 +202,14 @@ describe('串口 IPC 契约', () => {
     })
   })
 
-  it('主进程与 preload 静态源码使用固定 serial:list 通道（非 Electron 集成测试）', () => {
+  it('主进程通过统一可信注册器接线，preload 使用固定 serial:list 通道', () => {
     const root = path.join(__dirname, '..')
     const main = fs.readFileSync(path.join(root, 'main', 'index.js'), 'utf8')
     const preload = fs.readFileSync(path.join(root, 'preload.js'), 'utf8')
 
-    expect(main).toContain("ipcMain.handle('serial:list', serialListHandler)")
+    expect(main).toContain('registerTrustedIpcHandlers({')
+    expect(main).toContain('createMainIpcHandlers({')
+    expect(main).not.toContain('ipcMain.handle(')
     expect(main).toContain("win.webContents.on('will-navigate'")
     expect(main).toContain("win.webContents.setWindowOpenHandler")
     expect(preload).toContain("ipcRenderer.invoke('serial:list')")

@@ -26,6 +26,19 @@ function normalizeRequiredText(value, message) {
   return value.trim()
 }
 
+function normalizeSerialPath(value) {
+  if (typeof value !== 'string') {
+    throw new Error('RTU 串口路径 serialPath 不能为空')
+  }
+  if (/[\u0000-\u001F\u007F-\u009F]/.test(value)) {
+    throw new Error('RTU 串口路径 serialPath 不能包含换行、NUL 或其他控制字符')
+  }
+  if (value.trim() === '') {
+    throw new Error('RTU 串口路径 serialPath 不能为空')
+  }
+  return value.trim()
+}
+
 function normalizeConnectionConfig(raw = {}) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     throw new Error('连接配置必须是对象')
@@ -68,7 +81,7 @@ function normalizeConnectionConfig(raw = {}) {
 
   return {
     transport,
-    serialPath: normalizeRequiredText(raw.serialPath, 'RTU 串口路径 serialPath 不能为空'),
+    serialPath: normalizeSerialPath(raw.serialPath),
     baudRate: normalizeInteger(raw.baudRate, 9600, 'RTU 波特率 baudRate', 110, 4000000),
     dataBits,
     stopBits,

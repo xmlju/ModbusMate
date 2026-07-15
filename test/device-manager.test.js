@@ -13,6 +13,16 @@ function stubService(over = {}) {
   }
 }
 
+function deferred() {
+  let resolve
+  let reject
+  const promise = new Promise((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
 beforeEach(() => vi.useFakeTimers())
 afterEach(() => vi.useRealTimers())
 
@@ -111,6 +121,246 @@ describe('DeviceManager', () => {
     await dm.stop('dev1')
     expect(svc.disconnect).toHaveBeenCalled()
     expect(states).toContain('disconnected')
+  })
+
+  it('stop 断开失败时保留实例且不误报 disconnected，第二次 stop 会重试', async () => {
+    const disconnectError = new Error('串口关闭失败')
+    const svc = stubService({
+      disconnect: vi.fn()
+        .mockRejectedValueOnce(disconnectError)
+        .mockResolvedValueOnce(undefined),
+    })
+    const dm = new DeviceManager(() => svc)
+    const states = []
+    dm.on('status', s => states.push(s.state))
+    await dm.start('dev1', CFG)
+
+    await expect(dm.stop('dev1')).rejects.toBe(disconnectError)
+
+    expect(dm.instances.get('dev1').service).toBe(svc)
+    expect(states.filter(state => state === 'disconnected')).toHaveLength(0)
+    expect(svc.disconnect).toHaveBeenCalledOnce()
+
+    await dm.stop('dev1')
+
+    expect(svc.disconnect).toHaveBeenCalledTimes(2)
+    expect(dm.instances.has('dev1')).toBe(false)
+    expect(states.filter(state => state === 'disconnected')).toHaveLength(1)
+  })
+
+  it('createService 连续同步失败不泄漏 generation/queue，之后同 id 可恢复启动', async () => {
+    const factoryError = new Error('服务工厂初始化失败')
+    const svc = stubService()
+    let attempts = 0
+    const dm = new DeviceManager(() => {
+      attempts++
+      if (attempts <= 2) throw factoryError
+      return svc
+    })
+
+    expect(() => dm.start('dev1', CFG)).toThrow(factoryError)
+    expect(() => dm.start('dev1', CFG)).toThrow(factoryError)
+    expect(dm.generations.size).toBe(0)
+    expect(dm.lifecycleQueues.size).toBe(0)
+
+    await dm.start('dev1', CFG)
+
+    expect(svc.connect).toHaveBeenCalledOnce()
+    await dm.stopAll()
+  })
+
+  it('运行实例上再次 start 遇到 factory 同步失败时恢复旧 generation', async () => {
+    const factoryError = new Error('新服务创建失败')
+    const svc = stubService()
+    let attempts = 0
+    const dm = new DeviceManager(() => {
+      attempts++
+      if (attempts === 2) throw factoryError
+      return svc
+    })
+    const onData = vi.fn()
+    const states = []
+    dm.on('data', onData)
+    dm.on('status', s => states.push(s.state))
+    await dm.start('dev1', CFG)
+    const original = dm.instances.get('dev1')
+
+    expect(() => dm.start('dev1', CFG)).toThrow(factoryError)
+
+    expect(dm.instances.get('dev1')).toBe(original)
+    expect(dm.generations.get('dev1')).toBe(original.generation)
+    await expect(dm.write('dev1', 'holding', 1, [7])).resolves.toBeUndefined()
+    await vi.advanceTimersByTimeAsync(CFG.interval)
+    expect(onData).toHaveBeenCalled()
+    expect(states).toEqual(['connected'])
+
+    await dm.stop('dev1')
+    expect(svc.disconnect).toHaveBeenCalledOnce()
+    expect(dm.instances.size).toBe(0)
+    expect(dm.generations.size).toBe(0)
+    expect(dm.lifecycleQueues.size).toBe(0)
+  })
+
+  it('pending start 期间同 id factory 同步失败不淘汰原 pending generation', async () => {
+    const connecting = deferred()
+    const factoryError = new Error('并发服务创建失败')
+    const svc = stubService({ connect: vi.fn(() => connecting.promise) })
+    let attempts = 0
+    const dm = new DeviceManager(() => {
+      attempts++
+      if (attempts === 2) throw factoryError
+      return svc
+    })
+    const states = []
+    dm.on('status', s => states.push(s.state))
+
+    const starting = dm.start('dev1', CFG)
+    const pendingGeneration = dm.instances.get('dev1').generation
+    expect(() => dm.start('dev1', CFG)).toThrow(factoryError)
+    connecting.resolve()
+    await starting
+
+    expect(dm.generations.get('dev1')).toBe(pendingGeneration)
+    expect(dm.instances.get('dev1').service).toBe(svc)
+    expect(states).toEqual(['connected'])
+    await dm.stopAll()
+  })
+
+  it('不同 id 的 connect 连续失败后不残留 generation、queue 或 instance', async () => {
+    const services = [
+      stubService({ connect: vi.fn().mockRejectedValue(new Error('A 连接失败')) }),
+      stubService({ connect: vi.fn().mockRejectedValue(new Error('B 连接失败')) }),
+    ]
+    const dm = new DeviceManager(() => services.shift())
+
+    await expect(dm.start('a', CFG)).rejects.toThrow('A 连接失败')
+    await expect(dm.start('b', CFG)).rejects.toThrow('B 连接失败')
+
+    expect(dm.instances.size).toBe(0)
+    expect(dm.generations.size).toBe(0)
+    expect(dm.lifecycleQueues.size).toBe(0)
+  })
+
+  it('同 id 并发 start 时淘汰旧 generation，仅保留第二个实例运行', async () => {
+    const firstConnect = deferred()
+    const first = stubService({ connect: vi.fn(() => firstConnect.promise) })
+    const second = stubService()
+    let created = 0
+    const dm = new DeviceManager(() => (created++ === 0 ? first : second))
+    const states = []
+    dm.on('status', s => states.push(s.state))
+
+    const firstStart = dm.start('dev1', CFG)
+    const secondStart = dm.start('dev1', CFG)
+    firstConnect.resolve()
+    await firstStart
+    await secondStart
+
+    expect(first.disconnect).toHaveBeenCalledOnce()
+    expect(second.connect).toHaveBeenCalledOnce()
+    expect(states.filter(state => state === 'connected')).toHaveLength(1)
+    expect(dm.instances.get('dev1').service).toBe(second)
+    expect(vi.getTimerCount()).toBe(1)
+
+    await dm.stopAll()
+    expect(second.disconnect).toHaveBeenCalledOnce()
+  })
+
+  it('pending start 后立即 stop：连接成功结果过期且不创建轮询', async () => {
+    const connecting = deferred()
+    const svc = stubService({ connect: vi.fn(() => connecting.promise) })
+    const dm = new DeviceManager(() => svc)
+    const states = []
+    dm.on('status', s => states.push(s.state))
+
+    const starting = dm.start('dev1', CFG)
+    const stopping = dm.stop('dev1')
+    connecting.resolve()
+    await starting
+    await stopping
+
+    expect(states).not.toContain('connected')
+    expect(vi.getTimerCount()).toBe(0)
+    expect(svc.disconnect).toHaveBeenCalledOnce()
+    expect(dm.instances.has('dev1')).toBe(false)
+  })
+
+  it('connect 失败会清理实例、定时器和服务，并抛出原始错误', async () => {
+    const connectError = new Error('串口占用')
+    const svc = stubService({ connect: vi.fn().mockRejectedValue(connectError) })
+    const dm = new DeviceManager(() => svc)
+
+    await expect(dm.start('dev1', RTU_CFG)).rejects.toBe(connectError)
+
+    expect(dm.instances.has('dev1')).toBe(false)
+    expect(vi.getTimerCount()).toBe(0)
+    expect(svc.disconnect).toHaveBeenCalledOnce()
+  })
+
+  it('stop 等待在途 tick，停止后不再发出 data 或 pollError', async () => {
+    const reading = deferred()
+    const svc = stubService({ read: vi.fn(() => reading.promise) })
+    const dm = new DeviceManager(() => svc)
+    const onData = vi.fn()
+    const onPollError = vi.fn()
+    dm.on('data', onData)
+    dm.on('pollError', onPollError)
+    await dm.start('dev1', CFG)
+
+    const stopping = dm.stop('dev1')
+    reading.reject(new Error('停止期间读取失败'))
+    await stopping
+
+    expect(onData).not.toHaveBeenCalled()
+    expect(onPollError).not.toHaveBeenCalled()
+    expect(svc.disconnect).toHaveBeenCalledOnce()
+    expect(dm.instances.has('dev1')).toBe(false)
+  })
+
+  it('stop 等待在途 reconnect，重连完成后不得复活实例', async () => {
+    const reconnecting = deferred()
+    const svc = stubService({
+      read: vi.fn().mockRejectedValue(new Error('Timed out')),
+      reconnect: vi.fn(() => reconnecting.promise),
+    })
+    const dm = new DeviceManager(() => svc)
+    const states = []
+    dm.on('status', s => states.push(s.state))
+    dm.on('pollError', () => {})
+    await dm.start('dev1', { ...CFG, interval: 100 })
+    await vi.advanceTimersByTimeAsync(300)
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(svc.reconnect).toHaveBeenCalledOnce()
+
+    const stopping = dm.stop('dev1')
+    reconnecting.resolve()
+    await stopping
+
+    expect(states.filter(state => state === 'connected')).toHaveLength(1)
+    expect(svc.disconnect).toHaveBeenCalledOnce()
+    expect(dm.instances.has('dev1')).toBe(false)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('生命周期队列在 start 失败后仍可再次 start', async () => {
+    const connectError = new Error('首次连接失败')
+    const firstConnect = deferred()
+    const first = stubService({ connect: vi.fn(() => firstConnect.promise) })
+    const second = stubService()
+    let created = 0
+    const dm = new DeviceManager(() => (created++ === 0 ? first : second))
+
+    const firstStart = dm.start('dev1', CFG)
+    const secondStart = dm.start('dev1', CFG)
+    expect(second.connect).not.toHaveBeenCalled()
+
+    firstConnect.reject(connectError)
+    await expect(firstStart).rejects.toBe(connectError)
+    await secondStart
+
+    expect(second.connect).toHaveBeenCalledOnce()
+    expect(dm.instances.get('dev1').service).toBe(second)
+    await dm.stopAll()
   })
 
   it('未启动的实例 write 报错', async () => {

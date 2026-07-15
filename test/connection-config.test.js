@@ -46,6 +46,20 @@ describe('normalizeConnectionConfig', () => {
       .toThrow('RTU 串口路径 serialPath 不能为空')
   })
 
+  it.each([
+    ['换行符', 'COM7\n伪造日志'],
+    ['仅换行符', '\n'],
+    ['回车符', 'COM7\r伪造日志'],
+    ['NUL', 'COM7\0伪造日志'],
+    ['制表符', 'COM7\t伪造日志'],
+    ['DEL', `COM7${String.fromCharCode(127)}伪造日志`],
+    ['NEL（C1）', `COM7${String.fromCharCode(0x85)}伪造日志`],
+    ['C1 上界', `COM7${String.fromCharCode(0x9F)}伪造日志`],
+  ])('RTU serialPath 拒绝%s等控制字符', (_label, serialPath) => {
+    expect(() => normalizeConnectionConfig({ transport: 'rtu', serialPath }))
+      .toThrow('RTU 串口路径 serialPath 不能包含换行、NUL 或其他控制字符')
+  })
+
   it('RTU parity 非法时抛出详细中文错误', () => {
     expect(() => normalizeConnectionConfig({ transport: 'rtu', serialPath: 'COM1', parity: 'mark' }))
       .toThrow('RTU 校验位 parity 只能是 none、even 或 odd')

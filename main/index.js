@@ -7,7 +7,9 @@ const ModbusService = require('./modbus-service')
 const Poller = require('./poller')
 const DeviceManager = require('./device-manager')
 const { listSerialPorts } = require('./serial-ports')
-const { createSerialListHandler, isTrustedAppFrame } = require('./serial-ipc')
+const { createSerialListHandler } = require('./serial-ipc')
+const { createMainIpcHandlers } = require('./ipc-handlers')
+const { registerTrustedIpcHandlers } = require('./ipc-security')
 
 const service = new ModbusService()
 const poller = new Poller(service)
@@ -16,7 +18,8 @@ let win = null
 const appEntryUrl = pathToFileURL(path.join(__dirname, '..', 'renderer', 'index.html')).href
 const serialListHandler = createSerialListHandler({
   listPorts: listSerialPorts,
-  isTrustedEvent: event => isTrustedAppFrame(event, win, appEntryUrl),
+  // 所有通道由统一注册器完成可信主 frame 校验，此处只负责结果序列化。
+  isTrustedEvent: () => true,
 })
 
 // ── 崩溃级错误落盘，便于远程排查用户问题 ──
@@ -55,84 +58,30 @@ function createWindow() {
 function send(channel, payload) { win?.webContents.send(channel, payload) }
 
 function registerIpc() {
-  ipcMain.handle('serial:list', serialListHandler)
-  ipcMain.handle('modbus:connect', async (_e, params) => {
-    await service.connect(params)
-    send('modbus:status', { state: 'connected' })
+  const handlers = createMainIpcHandlers({
+    service,
+    poller,
+    deviceManager,
+    serialListHandler,
+    loadConfig,
+    saveConfig,
+    dialog,
+    app,
+    getWindow: () => win,
+    send,
+    fs,
+    path,
   })
-  ipcMain.handle('modbus:disconnect', async () => {
-    poller.stop()
-    await service.disconnect()
-    send('modbus:status', { state: 'disconnected' })
+  registerTrustedIpcHandlers({
+    ipcMain,
+    handlers,
+    getWindow: () => win,
+    expectedUrl: appEntryUrl,
   })
-  ipcMain.handle('modbus:startPoll', (_e, cfg) => poller.start(cfg))
-  ipcMain.handle('modbus:stopPoll', () => poller.stop())
-  ipcMain.handle('modbus:write', (_e, { area, addr, words }) =>
-    poller.running ? poller.write(area, addr, words) : service.write(area, addr, words))
-  ipcMain.handle('config:load', () => loadConfig())
-  ipcMain.handle('config:save', (_e, cfg) => saveConfig(cfg))
 
-  // v0.2 设备采集 IPC
-  ipcMain.handle('device:start', (_e, { id, cfg }) => deviceManager.start(id, cfg))
-  ipcMain.handle('device:stop', (_e, id) => deviceManager.stop(id))
-  ipcMain.handle('device:write', (_e, { id, area, addr, words }) => deviceManager.write(id, area, addr, words))
   deviceManager.on('data', d => send('device:data', d))
   deviceManager.on('status', s => send('device:status', s))
   deviceManager.on('pollError', e => send('device:log', { level: 'error', id: e.id, message: `读取失败：${e.message}` }))
-
-  // ── 点表导入导出（文件对话框须在主进程） ──
-  ipcMain.handle('points:export', async (_e, { defaultName, json }) => {
-    const { canceled, filePath } = await dialog.showSaveDialog(win, {
-      defaultPath: defaultName,
-      filters: [{ name: 'JSON 点表', extensions: ['json'] }],
-    })
-    if (canceled || !filePath) return { ok: false, canceled: true }
-    try { fs.writeFileSync(filePath, json, 'utf8'); return { ok: true, path: filePath } }
-    catch (e) { return { ok: false, error: e.message } }
-  })
-
-  ipcMain.handle('points:import', async () => {
-    const { canceled, filePaths } = await dialog.showOpenDialog(win, {
-      filters: [{ name: 'JSON 点表', extensions: ['json'] }],
-      properties: ['openFile'],
-    })
-    if (canceled || !filePaths?.[0]) return { ok: false, canceled: true }
-    try { return { ok: true, path: filePaths[0], content: fs.readFileSync(filePaths[0], 'utf8') } }
-    catch (e) { return { ok: false, error: e.message } }
-  })
-
-  // 设备图片
-  ipcMain.handle('copy-image', async (event, srcPath) => {
-    const { copyFileSync, mkdirSync, existsSync } = require('fs')
-    const crypto = require('crypto')
-    const imgDir = path.join(app.getPath('userData'), 'images')
-    if (!existsSync(imgDir)) mkdirSync(imgDir, { recursive: true })
-    const ext = path.extname(srcPath) || '.png'
-    const name = crypto.randomUUID() + ext
-    const dest = path.join(imgDir, name)
-    copyFileSync(srcPath, dest)
-    return 'images/' + name
-  })
-
-  ipcMain.handle('read-image', async (event, relativePath) => {
-    const fullPath = path.join(app.getPath('userData'), relativePath)
-    const data = fs.readFileSync(fullPath)
-    const ext = path.extname(relativePath).toLowerCase()
-    const mime = ext === '.png' ? 'image/png' : ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : ext === '.gif' ? 'image/gif' : ext === '.webp' ? 'image/webp' : 'image/png'
-    return `data:${mime};base64,${data.toString('base64')}`
-  })
-
-  ipcMain.handle('save-image', async (event, dataUrl) => {
-    // dataUrl 格式: data:image/png;base64,...
-    const crypto = require('crypto')
-    const imgDir = path.join(app.getPath('userData'), 'images')
-    if (!fs.existsSync(imgDir)) fs.mkdirSync(imgDir, { recursive: true })
-    const name = crypto.randomUUID() + '.png'
-    const dest = path.join(imgDir, name)
-    const base64 = dataUrl.replace(/^data:image\/\w+;base64,/, '')
-    fs.writeFileSync(dest, Buffer.from(base64, 'base64'))
-    return 'images/' + name
-  })
 
   poller.on('data', d => send('modbus:data', d))
   poller.on('pollError', msg => send('modbus:log', { level: 'error', message: `读取失败：${msg}` }))

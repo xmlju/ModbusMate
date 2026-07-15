@@ -1,13 +1,5 @@
-// main/serial-ipc.js — 可独立测试的串口 IPC 安全边界
-
-function isTrustedAppFrame(event, win, expectedUrl) {
-  return Boolean(
-    win &&
-    event?.sender === win.webContents &&
-    event.senderFrame === win.webContents.mainFrame &&
-    event.senderFrame.url === expectedUrl,
-  )
-}
+// main/serial-ipc.js — 可独立测试的串口 IPC 结果序列化
+const { isTrustedAppFrame } = require('./ipc-security')
 
 function createSerialListHandler({ listPorts, isTrustedEvent } = {}) {
   if (typeof listPorts !== 'function') {
