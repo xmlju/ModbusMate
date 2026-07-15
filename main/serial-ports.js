@@ -18,7 +18,11 @@ async function listSerialPorts(list = () => SerialPort.list()) {
           productId: port.productId ?? '',
         }
       })
-      .sort((left, right) => left.path.localeCompare(right.path))
+      .sort((left, right) => {
+        if (left.path < right.path) return -1
+        if (left.path > right.path) return 1
+        return 0
+      })
   } catch (cause) {
     const message = cause instanceof Error ? cause.message : String(cause)
     const error = new Error(`串口枚举失败：${message}`, { cause })

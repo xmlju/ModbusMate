@@ -5,11 +5,12 @@ const fs = require('fs')
 const ModbusService = require('./modbus-service')
 const Poller = require('./poller')
 const DeviceManager = require('./device-manager')
-const { listSerialPorts } = require('./serial-ports')
+const { createSerialListHandler } = require('./serial-ipc')
 
 const service = new ModbusService()
 const poller = new Poller(service)
 const deviceManager = new DeviceManager()
+const serialListHandler = createSerialListHandler()
 let win = null
 
 // ── 崩溃级错误落盘，便于远程排查用户问题 ──
@@ -44,7 +45,7 @@ function createWindow() {
 function send(channel, payload) { win?.webContents.send(channel, payload) }
 
 function registerIpc() {
-  ipcMain.handle('serial:list', () => listSerialPorts())
+  ipcMain.handle('serial:list', serialListHandler)
   ipcMain.handle('modbus:connect', async (_e, params) => {
     await service.connect(params)
     send('modbus:status', { state: 'connected' })

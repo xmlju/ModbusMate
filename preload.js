@@ -1,8 +1,18 @@
 // preload.js — IPC 白名单桥接：渲染层只能访问这里显式暴露的 API
 const { contextBridge, ipcRenderer } = require('electron')
 
+function unpackSerialPortsResponse(response) {
+  if (response?.ok) return response.ports
+
+  const details = response?.error ?? {}
+  const error = new Error(details.message || '串口枚举失败')
+  if (details.code !== undefined) error.code = details.code
+  if (details.causeMessage) error.cause = new Error(details.causeMessage)
+  throw error
+}
+
 contextBridge.exposeInMainWorld('api', {
-  listSerialPorts: () => ipcRenderer.invoke('serial:list'),
+  listSerialPorts: () => ipcRenderer.invoke('serial:list').then(unpackSerialPortsResponse),
   connect:          p    => ipcRenderer.invoke('modbus:connect', p),
   disconnect:       ()   => ipcRenderer.invoke('modbus:disconnect'),
   startPoll:        c    => ipcRenderer.invoke('modbus:startPoll', c),
