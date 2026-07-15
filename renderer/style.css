@@ -97,10 +97,12 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 #host { width: 145px; min-width: 0; }
 #transport { width: 130px; }
 #serialPath { width: 210px; max-width: 32vw; }
-#baudRate { width: 94px; }
+#baudRate { width: auto; min-width: 80px; }
 .connection-fields { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .connection-bar { row-gap: 8px; align-items: flex-end; }
 .connection-bar > label { align-items: flex-end; min-width: 60px; }
+/* 连接栏下拉框防止选项文字截断 */
+.connection-bar select { width: auto; min-width: 64px; }
 .right { margin-left: auto; }
 
 @media (max-width: 940px) {
@@ -255,30 +257,32 @@ td select { padding: 2px 4px; margin-right: 4px; background: var(--surface-2); c
 /* ── 类型点位编辑表格 ── */
 .type-points-table-wrap { max-height: 56vh; overflow: auto; margin: 10px 0; }
 /* max-content 让列按内容自然撑开，超宽时由 wrap 横向滚动兜底 */
-.type-points-table-wrap table { width: max-content; min-width: 100%; border-collapse: collapse; font-size: 12px; }
-.type-points-table-wrap th, .type-points-table-wrap td { padding: 4px 6px; border: 1px solid var(--border); text-align: left; white-space: nowrap; }
-.type-points-table-wrap th { background: var(--surface-2); position: sticky; top: 0; color: var(--ink-2); z-index: 1; }
-.type-points-table-wrap input, .type-points-table-wrap select { padding: 2px 4px; border: 1px solid var(--border); border-radius: 3px; width: 100%; background: var(--surface-2); color: var(--ink-1); }
+.type-points-table-wrap table { width: max-content; min-width: 100%; border-collapse: collapse; }
+.type-points-table-wrap th, .type-points-table-wrap td { padding: 4px 6px; border: 1px solid var(--border); text-align: left; white-space: nowrap; font-size: 12px; }
+.type-points-table-wrap th { background: var(--surface-2); position: sticky; top: 0; color: var(--ink-2); z-index: 2; }
+.type-points-table-wrap input, .type-points-table-wrap select { padding: 2px 4px; border: 1px solid var(--border); border-radius: 3px; width: 100%; background: var(--surface-2); color: var(--ink-1); font-size: 12px; }
+.type-points-table-wrap button { font-size: 12px; }
 /* 各列最小宽度：名称/区域给足中文空间，数字列紧凑 */
-.type-points-table-wrap th:nth-child(1), .type-points-table-wrap td:nth-child(1) { min-width: 150px; }  /* 名称 */
+.type-points-table-wrap th:nth-child(1), .type-points-table-wrap td:nth-child(1) { min-width: 120px; position: sticky; left: 0; background: var(--page); z-index: 1; }  /* 名称 */
+.type-points-table-wrap thead th:nth-child(1) { background: var(--surface-2); z-index: 3; }  /* 名称表头盖住 sticky 列 */
 .type-points-table-wrap th:nth-child(2), .type-points-table-wrap td:nth-child(2) { min-width: 110px; }  /* 区域 */
-.type-points-table-wrap th:nth-child(3), .type-points-table-wrap td:nth-child(3) { min-width: 80px; }   /* 地址 */
-.type-points-table-wrap th:nth-child(4), .type-points-table-wrap td:nth-child(4) { min-width: 90px; }   /* 类型 */
-.type-points-table-wrap th:nth-child(5), .type-points-table-wrap td:nth-child(5) { min-width: 64px; }   /* 字序 */
-.type-points-table-wrap th:nth-child(6), .type-points-table-wrap td:nth-child(6) { min-width: 50px; }   /* k */
-.type-points-table-wrap th:nth-child(7), .type-points-table-wrap td:nth-child(7) { min-width: 50px; }   /* b */
-.type-points-table-wrap th:nth-child(8), .type-points-table-wrap td:nth-child(8) { min-width: 70px; }   /* 小数位 */
-.type-points-table-wrap th:nth-child(9), .type-points-table-wrap td:nth-child(9) { min-width: 50px; }   /* 单位 */
-.type-points-table-wrap th:nth-child(10), .type-points-table-wrap td:nth-child(10) { min-width: 44px; } /* 显示 */
-.type-points-table-wrap th:nth-child(11), .type-points-table-wrap td:nth-child(11) { min-width: 70px; } /* 操作 */
-.kb-help { display: inline-block; cursor: help; color: var(--accent); font-size: 11px; margin-left: 2px; font-weight: 700; }
+.type-points-table-wrap th:nth-child(3), .type-points-table-wrap td:nth-child(3) { min-width: 64px; }   /* 地址 */
+.type-points-table-wrap th:nth-child(4), .type-points-table-wrap td:nth-child(4) { min-width: 80px; }   /* 类型 */
+.type-points-table-wrap th:nth-child(5), .type-points-table-wrap td:nth-child(5) { min-width: 52px; }   /* 字序 */
+.type-points-table-wrap th:nth-child(6), .type-points-table-wrap td:nth-child(6) { min-width: 40px; }   /* k */
+.type-points-table-wrap th:nth-child(7), .type-points-table-wrap td:nth-child(7) { min-width: 40px; }   /* b */
+.type-points-table-wrap th:nth-child(8), .type-points-table-wrap td:nth-child(8) { min-width: 52px; }   /* 小数位 */
+.type-points-table-wrap th:nth-child(9), .type-points-table-wrap td:nth-child(9) { min-width: 40px; }   /* 单位 */
+.type-points-table-wrap th:nth-child(10), .type-points-table-wrap td:nth-child(10) { min-width: 40px; } /* 显示 */
+.type-points-table-wrap th:nth-child(11), .type-points-table-wrap td:nth-child(11) { min-width: 64px; } /* 操作 */
+.kb-help { display: inline-block; cursor: help; color: var(--accent); font-size: 12px; margin-left: 2px; font-weight: 700; }
 /* 类型编辑表格筛选栏 */
 .type-editor-toolbar { display: flex; align-items: center; gap: 10px; margin: 8px 0; flex-wrap: wrap; }
 .type-editor-toolbar input[type="text"] { padding: 4px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-2); color: var(--ink-1); width: 180px; font-size: 12px; }
 .type-editor-toolbar label { font-size: 12px; color: var(--ink-2); display: flex; align-items: center; gap: 4px; cursor: pointer; white-space: nowrap; }
 .type-editor-toolbar input[type="checkbox"] { accent-color: var(--accent); }
 /* 类型编辑表格移动按钮 */
-.tp-move-btn { padding: 1px 5px; background: transparent; border: 1px solid var(--border); color: var(--ink-2); font-size: 11px; cursor: pointer; border-radius: 3px; line-height: 1; }
+.tp-move-btn { padding: 1px 5px; background: transparent; border: 1px solid var(--border); color: var(--ink-2); font-size: 12px; cursor: pointer; border-radius: 3px; line-height: 1; }
 .tp-move-btn:disabled { opacity: .35; cursor: not-allowed; }
 .tp-move-btn:hover:not(:disabled) { background: var(--surface-2); color: var(--ink-1); }
 .tp-del-btn { padding: 2px 6px; background: transparent; color: var(--status-critical); border-color: var(--status-critical); font-size: 12px; }

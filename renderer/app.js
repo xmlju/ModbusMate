@@ -325,7 +325,7 @@ function renderDebugForDevice(id) {
     type.points.forEach((p, idx) => {
       if (p.visible === false) return
       const slice = blocks ? ReadPlan.pickValues(blocks, { area: p.area, addr: p.addr, words: DeviceUI.getWords(p.area, p.type) }) : null
-      const dispAddr = Codec.toPlcAddress(p.addr, p.area)
+      const dispAddr = p.addr
       const areaLabel = { holding: '保持寄存器', input: '输入寄存器', coil: '线圈', discrete: '离散输入' }[p.area] || p.area
       const typeLabel = Codec.TYPES[p.type]?.label || p.type
       const kLabel = p.k !== 1 || p.b !== 0 ? ` ×${p.k}${p.b >= 0 ? `+${p.b}` : p.b}` : ''
@@ -386,7 +386,7 @@ let ddWriteTarget = null
 
 function openDDWriteModal(instId, area, addr, type, wordOrder) {
   ddWriteTarget = { instId, area, addr, type, wordOrder }
-  const dispAddr = Codec.toPlcAddress(addr, area)
+  const dispAddr = addr
   const isCoil = area === 'coil'
   $('modalTitle').textContent = `写入 ${dispAddr}（${isCoil ? '线圈' : Codec.TYPES[type].label}）`
   $('modalHint').textContent = isCoil ? '输入 1=ON，0=OFF' : type === 'hex' ? '输入十六进制，如 1A2B' : '输入数值'
