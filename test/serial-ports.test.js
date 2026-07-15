@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest'
 const fs = require('fs')
 const path = require('path')
+const { execFileSync } = require('child_process')
 const { listSerialPorts } = require('../main/serial-ports')
-const { createSerialListHandler } = require('../main/serial-ipc')
+const { createSerialListHandler, isTrustedAppFrame } = require('../main/serial-ipc')
 
 describe('listSerialPorts', () => {
   it('映射稳定字段，补齐空字段并按 path 排序', async () => {
@@ -101,27 +102,84 @@ describe('listSerialPorts', () => {
 })
 
 describe('串口 IPC 契约', () => {
-  it('可信 file 页面枚举成功时返回可序列化结果', async () => {
-    const ports = [{ path: 'COM1' }]
-    const handler = createSerialListHandler(async () => ports)
+  it.each([
+    { dependencies: { isTrustedEvent: () => true }, dependencyName: 'listPorts' },
+    { dependencies: { listPorts: async () => [] }, dependencyName: 'isTrustedEvent' },
+  ])('缺少 $dependencyName 依赖时抛出配置错误', ({ dependencies, dependencyName }) => {
+    expect(() => createSerialListHandler(dependencies))
+      .toThrow(`串口 IPC 配置错误：${dependencyName} 必须是函数`)
+  })
 
-    await expect(handler({ senderFrame: { url: 'file:///app/index.html' } })).resolves.toEqual({
+  it('加载纯 IPC 模块时不会加载 serialport 原生依赖', () => {
+    const script = `
+      const Module = require('module')
+      const originalLoad = Module._load
+      Module._load = function (request, parent, isMain) {
+        if (request === 'serialport' || request.endsWith('/serial-ports')) {
+          throw new Error('不应加载原生串口依赖')
+        }
+        return originalLoad.call(this, request, parent, isMain)
+      }
+      require(${JSON.stringify(path.join(__dirname, '..', 'main', 'serial-ipc.js'))})
+    `
+
+    expect(() => execFileSync(process.execPath, ['-e', script])).not.toThrow()
+  })
+
+  it('可信事件枚举成功时返回可序列化结果', async () => {
+    const ports = [{ path: 'COM1' }]
+    const handler = createSerialListHandler({
+      listPorts: async () => ports,
+      isTrustedEvent: () => true,
+    })
+
+    await expect(handler({})).resolves.toEqual({
       ok: true,
       ports,
     })
   })
 
-  it('拒绝 https 页面发起的串口枚举请求', async () => {
-    const handler = createSerialListHandler(async () => [])
+  it('信任函数返回 false 时拒绝请求且不调用枚举器', async () => {
+    let listCalled = false
+    const handler = createSerialListHandler({
+      listPorts: async () => { listCalled = true; return [] },
+      isTrustedEvent: () => false,
+    })
 
-    await expect(handler({ senderFrame: { url: 'https://example.com/' } }))
+    await expect(handler({ senderFrame: { url: 'file:///tmp/index.html' } }))
       .rejects.toThrow('拒绝未授权的串口枚举请求')
+    expect(listCalled).toBe(false)
   })
 
-  it('拒绝缺少 senderFrame 的串口枚举请求', async () => {
-    const handler = createSerialListHandler(async () => [])
+  it('精确匹配应用窗口、发送者、主 Frame 与入口 URL', () => {
+    const expectedUrl = 'file:///app/renderer/index.html'
+    const mainFrame = { url: expectedUrl }
+    const webContents = { mainFrame }
+    const win = { webContents }
+    const event = { sender: webContents, senderFrame: mainFrame }
 
-    await expect(handler({})).rejects.toThrow('拒绝未授权的串口枚举请求')
+    expect(isTrustedAppFrame(event, win, expectedUrl)).toBe(true)
+    expect(isTrustedAppFrame({ ...event, sender: {} }, win, expectedUrl)).toBe(false)
+    expect(isTrustedAppFrame({ ...event, senderFrame: {} }, win, expectedUrl)).toBe(false)
+    expect(isTrustedAppFrame(event, null, expectedUrl)).toBe(false)
+  })
+
+  it.each([
+    'file:///tmp/index.html',
+    'file://attacker/index.html',
+  ])('拒绝非入口 file URL：%s', async url => {
+    const expectedUrl = 'file:///app/renderer/index.html'
+    const mainFrame = { url }
+    const webContents = { mainFrame }
+    const win = { webContents }
+    const event = { sender: webContents, senderFrame: mainFrame }
+    const handler = createSerialListHandler({
+      listPorts: async () => [],
+      isTrustedEvent: candidate => isTrustedAppFrame(candidate, win, expectedUrl),
+    })
+
+    expect(isTrustedAppFrame(event, win, expectedUrl)).toBe(false)
+    await expect(handler(event)).rejects.toThrow('拒绝未授权的串口枚举请求')
   })
 
   it('将枚举错误转换为可序列化对象', async () => {
@@ -129,9 +187,12 @@ describe('串口 IPC 契约', () => {
     const error = Object.assign(new Error('串口枚举失败：permission denied', { cause }), {
       code: 'EACCES',
     })
-    const handler = createSerialListHandler(async () => { throw error })
+    const handler = createSerialListHandler({
+      listPorts: async () => { throw error },
+      isTrustedEvent: () => true,
+    })
 
-    await expect(handler({ senderFrame: { url: 'file:///app/index.html' } })).resolves.toEqual({
+    await expect(handler({})).resolves.toEqual({
       ok: false,
       error: {
         message: '串口枚举失败：permission denied',
@@ -147,6 +208,8 @@ describe('串口 IPC 契约', () => {
     const preload = fs.readFileSync(path.join(root, 'preload.js'), 'utf8')
 
     expect(main).toContain("ipcMain.handle('serial:list', serialListHandler)")
+    expect(main).toContain("win.webContents.on('will-navigate'")
+    expect(main).toContain("win.webContents.setWindowOpenHandler")
     expect(preload).toContain("ipcRenderer.invoke('serial:list')")
     expect(preload).not.toMatch(/ipcRenderer\.invoke\([^'\"]/) // 通道必须是源码中的固定字符串
   })

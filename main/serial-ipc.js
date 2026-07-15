@@ -1,14 +1,29 @@
 // main/serial-ipc.js — 可独立测试的串口 IPC 安全边界
-const { listSerialPorts } = require('./serial-ports')
 
-function createSerialListHandler(list = listSerialPorts) {
+function isTrustedAppFrame(event, win, expectedUrl) {
+  return Boolean(
+    win &&
+    event?.sender === win.webContents &&
+    event.senderFrame === win.webContents.mainFrame &&
+    event.senderFrame.url === expectedUrl,
+  )
+}
+
+function createSerialListHandler({ listPorts, isTrustedEvent } = {}) {
+  if (typeof listPorts !== 'function') {
+    throw new TypeError('串口 IPC 配置错误：listPorts 必须是函数')
+  }
+  if (typeof isTrustedEvent !== 'function') {
+    throw new TypeError('串口 IPC 配置错误：isTrustedEvent 必须是函数')
+  }
+
   return async event => {
-    if (!event?.senderFrame?.url?.startsWith('file://')) {
+    if (!isTrustedEvent(event)) {
       throw new Error('拒绝未授权的串口枚举请求')
     }
 
     try {
-      return { ok: true, ports: await list() }
+      return { ok: true, ports: await listPorts() }
     } catch (error) {
       return {
         ok: false,
@@ -24,4 +39,4 @@ function createSerialListHandler(list = listSerialPorts) {
   }
 }
 
-module.exports = { createSerialListHandler }
+module.exports = { createSerialListHandler, isTrustedAppFrame }

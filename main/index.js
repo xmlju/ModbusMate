@@ -1,17 +1,23 @@
 // main/index.js — 主进程入口：窗口、IPC 接线、配置持久化、崩溃日志
 const { app, BrowserWindow, ipcMain, dialog } = require('electron')
 const path = require('path')
+const { pathToFileURL } = require('url')
 const fs = require('fs')
 const ModbusService = require('./modbus-service')
 const Poller = require('./poller')
 const DeviceManager = require('./device-manager')
-const { createSerialListHandler } = require('./serial-ipc')
+const { listSerialPorts } = require('./serial-ports')
+const { createSerialListHandler, isTrustedAppFrame } = require('./serial-ipc')
 
 const service = new ModbusService()
 const poller = new Poller(service)
 const deviceManager = new DeviceManager()
-const serialListHandler = createSerialListHandler()
 let win = null
+const appEntryUrl = pathToFileURL(path.join(__dirname, '..', 'renderer', 'index.html')).href
+const serialListHandler = createSerialListHandler({
+  listPorts: listSerialPorts,
+  isTrustedEvent: event => isTrustedAppFrame(event, win, appEntryUrl),
+})
 
 // ── 崩溃级错误落盘，便于远程排查用户问题 ──
 process.on('uncaughtException', err => {
@@ -38,7 +44,11 @@ function createWindow() {
       sandbox: true,
     },
   })
-  win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'))
+  win.webContents.on('will-navigate', (event, url) => {
+    if (url !== appEntryUrl) event.preventDefault()
+  })
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  win.loadURL(appEntryUrl)
   win.on('closed', () => { win = null })
 }
 
