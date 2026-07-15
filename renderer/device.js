@@ -528,7 +528,7 @@ const DeviceUI = (() => {
       <td style="text-align:center"><input type="checkbox" class="tp-visible"${visibleChecked} title="是否在总览/调试页显示"></td>
       <td style="white-space:nowrap">
         <button class="tp-move-btn tp-up" ${pointIdx === 0 ? 'disabled' : ''} title="上移">↑</button>
-        <button class="tp-move-btn tp-down" disabled title="下移">↓</button>
+        <button class="tp-move-btn tp-down" ${pointIdx >= state.types[typeIdx].points.length - 1 ? 'disabled' : ''} title="下移">↓</button>
         <button class="tp-del-btn" style="margin-left:2px">×</button>
       </td>`
     // 删除按钮
