@@ -17,8 +17,47 @@ beforeEach(() => vi.useFakeTimers())
 afterEach(() => vi.useRealTimers())
 
 const CFG = { host: '127.0.0.1', port: 8502, unitId: 1, interval: 1000, blocks: [{ area: 'holding', addr: 0, count: 3 }] }
+const RTU_CFG = {
+  transport: 'rtu',
+  serialPath: 'COM3',
+  baudRate: 9600,
+  dataBits: 8,
+  stopBits: 1,
+  parity: 'none',
+  unitId: 1,
+  timeout: 2000,
+  interval: 1000,
+  blocks: [{ area: 'holding', addr: 12508, count: 3 }],
+}
 
 describe('DeviceManager', () => {
+  it('RTU 配置完整传给服务，并继续按 blocks 采集', async () => {
+    const svc = stubService()
+    const dm = new DeviceManager(() => svc)
+
+    await dm.start('rtu1', RTU_CFG)
+
+    expect(svc.connect).toHaveBeenCalledOnce()
+    expect(svc.connect).toHaveBeenCalledWith(RTU_CFG)
+    expect(svc.read).toHaveBeenCalledWith('holding', 12508, 3)
+
+    await dm.stopAll()
+    expect(svc.disconnect).toHaveBeenCalledOnce()
+  })
+
+  it('旧 TCP 配置仍原样传给服务', async () => {
+    const svc = stubService()
+    const dm = new DeviceManager(() => svc)
+
+    await dm.start('tcp1', CFG)
+
+    expect(svc.connect).toHaveBeenCalledOnce()
+    expect(svc.connect).toHaveBeenCalledWith(CFG)
+
+    await dm.stopAll()
+    expect(svc.disconnect).toHaveBeenCalledOnce()
+  })
+
   it('start 后按周期推送带实例 id 的数据块', async () => {
     const svc = stubService()
     const dm = new DeviceManager(() => svc)
