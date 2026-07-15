@@ -1,5 +1,5 @@
 // main/index.js — 主进程入口：窗口、IPC 接线、配置持久化、崩溃日志
-const { app, BrowserWindow, ipcMain } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const ModbusService = require('./modbus-service')
@@ -66,6 +66,27 @@ function registerIpc() {
   deviceManager.on('data', d => send('device:data', d))
   deviceManager.on('status', s => send('device:status', s))
   deviceManager.on('pollError', e => send('device:log', { level: 'error', id: e.id, message: `读取失败：${e.message}` }))
+
+  // ── 点表导入导出（文件对话框须在主进程） ──
+  ipcMain.handle('points:export', async (_e, { defaultName, json }) => {
+    const { canceled, filePath } = await dialog.showSaveDialog(win, {
+      defaultPath: defaultName,
+      filters: [{ name: 'JSON 点表', extensions: ['json'] }],
+    })
+    if (canceled || !filePath) return { ok: false, canceled: true }
+    try { fs.writeFileSync(filePath, json, 'utf8'); return { ok: true, path: filePath } }
+    catch (e) { return { ok: false, error: e.message } }
+  })
+
+  ipcMain.handle('points:import', async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+      filters: [{ name: 'JSON 点表', extensions: ['json'] }],
+      properties: ['openFile'],
+    })
+    if (canceled || !filePaths?.[0]) return { ok: false, canceled: true }
+    try { return { ok: true, path: filePaths[0], content: fs.readFileSync(filePaths[0], 'utf8') } }
+    catch (e) { return { ok: false, error: e.message } }
+  })
 
   // 设备图片
   ipcMain.handle('copy-image', async (event, srcPath) => {

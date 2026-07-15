@@ -332,37 +332,48 @@ const DeviceUI = (() => {
     }
   }
 
+  // 从编辑表格逐行收集点位；返回 { ok, points, error }
+  function collectPointsFromTable() {
+    const rows = $('typePointsTbody').querySelectorAll('tr')
+    const points = []
+    for (let ri = 0; ri < rows.length; ri++) {
+      const tr = rows[ri]
+      const nameInput = tr.querySelector('.tp-name'); const areaSel = tr.querySelector('.tp-area')
+      const addrInput = tr.querySelector('.tp-addr'); const typeSel = tr.querySelector('.tp-type')
+      const orderSel = tr.querySelector('.tp-order'); const kInput = tr.querySelector('.tp-k')
+      const bInput = tr.querySelector('.tp-b'); const decInput = tr.querySelector('.tp-dec'); const unitInput = tr.querySelector('.tp-unit')
+      if (!nameInput) continue  // 空态占位行
+      const pName = nameInput.value.trim()
+      if (!pName) return { ok: false, error: `第 ${ri + 1} 行：点位名称不能为空` }
+      const addr = Number(addrInput.value)
+      if (!Number.isInteger(addr) || addr < 0 || addr > 65535) return { ok: false, error: `第 ${ri + 1} 行：地址应为 0~65535 的整数` }
+      const k = Number(kInput.value); const b = Number(bInput.value)
+      if (Number.isNaN(k) || Number.isNaN(b)) return { ok: false, error: `第 ${ri + 1} 行：k 和 b 必须是数字` }
+      points.push({ name: pName, area: areaSel.value, addr, type: typeSel.value, wordOrder: orderSel.value, k, b, decimals: decInput.value.trim() === '' ? null : Number(decInput.value), unit: unitInput.value.trim() })
+    }
+    return { ok: true, points }
+  }
+
+  // 保存回调（编辑/新建共用）：校验 → 写回类型 → 落库
+  function saveTypeFromEditor(t) {
+    const name = $('typeNameInput').value.trim()
+    if (!name) { $('typeEditorError').textContent = '类型名称不能为空'; return }
+    const c = collectPointsFromTable()
+    if (!c.ok) { $('typeEditorError').textContent = c.error; return }
+    const plan = ReadPlan.buildReadPlan(c.points.map(p => ({ area: p.area, addr: p.addr, words: getWords(p.area, p.type) })))
+    if (plan.length > 8) { if (!confirm(`点位过于分散，将产生 ${plan.length} 个读取块，可能影响采集效率。是否继续？`)) return }
+    t.name = name
+    t.points = c.points
+    saveToConfig(); closeTypeEditor(); renderMgrPage(); renderOverviewPage()
+  }
+
   function openTypeEditor(idx) {
     const t = state.types[idx]
     if (!t) return
     $('typeEditorTitle').textContent = `编辑类型：${escapeHtml(t.name)}`
     $('typeNameInput').value = t.name
     renderTypePoints(t, idx)
-    $('typeSaveBtn').onclick = () => {
-      const name = $('typeNameInput').value.trim()
-      if (!name) { $('typeEditorError').textContent = '类型名称不能为空'; return }
-      t.name = name
-      const rows = $('typePointsTbody').querySelectorAll('tr')
-      t.points = []; let valid = true
-      rows.forEach((tr, ri) => {
-        const nameInput = tr.querySelector('.tp-name'); const areaSel = tr.querySelector('.tp-area')
-        const addrInput = tr.querySelector('.tp-addr'); const typeSel = tr.querySelector('.tp-type')
-        const orderSel = tr.querySelector('.tp-order'); const kInput = tr.querySelector('.tp-k')
-        const bInput = tr.querySelector('.tp-b'); const decInput = tr.querySelector('.tp-dec'); const unitInput = tr.querySelector('.tp-unit')
-        if (!nameInput) return
-        const pName = nameInput.value.trim()
-        if (!pName) { $('typeEditorError').textContent = `第 ${ri + 1} 行：点位名称不能为空`; valid = false; return }
-        const addr = Number(addrInput.value)
-        if (!Number.isInteger(addr) || addr < 0 || addr > 65535) { $('typeEditorError').textContent = `第 ${ri + 1} 行：地址应为 0~65535 的整数`; valid = false; return }
-        const k = Number(kInput.value); const b = Number(bInput.value)
-        if (Number.isNaN(k) || Number.isNaN(b)) { $('typeEditorError').textContent = `第 ${ri + 1} 行：k 和 b 必须是数字`; valid = false; return }
-        t.points.push({ name: pName, area: areaSel.value, addr, type: typeSel.value, wordOrder: orderSel.value, k, b, decimals: decInput.value.trim() === '' ? null : Number(decInput.value), unit: unitInput.value.trim() })
-      })
-      if (!valid) return
-      const plan = ReadPlan.buildReadPlan(t.points.map(p => ({ area: p.area, addr: p.addr, words: getWords(p.area, p.type) })))
-      if (plan.length > 8) { if (!confirm(`点位过于分散，将产生 ${plan.length} 个读取块，可能影响采集效率。是否继续？`)) return }
-      saveToConfig(); closeTypeEditor(); renderMgrPage(); renderOverviewPage()
-    }
+    $('typeSaveBtn').onclick = () => saveTypeFromEditor(t)
     $('typeEditorModal').classList.remove('hidden')
   }
 
@@ -372,32 +383,7 @@ const DeviceUI = (() => {
     $('typeEditorTitle').textContent = '新建类型'
     $('typeNameInput').value = t.name
     renderTypePoints(t, state.types.length - 1)
-    $('typeSaveBtn').onclick = () => {
-      const name = $('typeNameInput').value.trim()
-      if (!name) { $('typeEditorError').textContent = '类型名称不能为空'; return }
-      t.name = name
-      const rows = $('typePointsTbody').querySelectorAll('tr')
-      t.points = []; let valid = true
-      rows.forEach((tr, ri) => {
-        // same collection logic as openTypeEditor
-        const nameInput = tr.querySelector('.tp-name'); const areaSel = tr.querySelector('.tp-area')
-        const addrInput = tr.querySelector('.tp-addr'); const typeSel = tr.querySelector('.tp-type')
-        const orderSel = tr.querySelector('.tp-order'); const kInput = tr.querySelector('.tp-k')
-        const bInput = tr.querySelector('.tp-b'); const decInput = tr.querySelector('.tp-dec'); const unitInput = tr.querySelector('.tp-unit')
-        if (!nameInput) return
-        const pName = nameInput.value.trim()
-        if (!pName) { $('typeEditorError').textContent = `第 ${ri + 1} 行：点位名称不能为空`; valid = false; return }
-        const addr = Number(addrInput.value)
-        if (!Number.isInteger(addr) || addr < 0 || addr > 65535) { $('typeEditorError').textContent = `第 ${ri + 1} 行：地址应为 0~65535 的整数`; valid = false; return }
-        const k = Number(kInput.value); const b = Number(bInput.value)
-        if (Number.isNaN(k) || Number.isNaN(b)) { $('typeEditorError').textContent = `第 ${ri + 1} 行：k 和 b 必须是数字`; valid = false; return }
-        t.points.push({ name: pName, area: areaSel.value, addr, type: typeSel.value, wordOrder: orderSel.value, k, b, decimals: decInput.value.trim() === '' ? null : Number(decInput.value), unit: unitInput.value.trim() })
-      })
-      if (!valid) return
-      const plan = ReadPlan.buildReadPlan(t.points.map(p => ({ area: p.area, addr: p.addr, words: getWords(p.area, p.type) })))
-      if (plan.length > 8) { if (!confirm(`点位过于分散，将产生 ${plan.length} 个读取块，可能影响采集效率。是否继续？`)) return }
-      saveToConfig(); closeTypeEditor(); renderMgrPage(); renderOverviewPage()
-    }
+    $('typeSaveBtn').onclick = () => saveTypeFromEditor(t)
     $('typeEditorModal').classList.remove('hidden')
   }
 
@@ -413,6 +399,33 @@ const DeviceUI = (() => {
       state.types[idx].points.push({ name: '', area: 'holding', addr: 0, type: 'uint16', wordOrder: 'AB', k: 1, b: 0, decimals: null, unit: '' })
       renderTypePoints(state.types[idx], idx)
     }
+
+    // ── 点表导出：取编辑器当前内容（含未保存修改）写 JSON 文件 ──
+    $('exportPointsBtn').onclick = async () => {
+      const c = collectPointsFromTable()
+      if (!c.ok) { $('typeEditorError').textContent = c.error; return }
+      if (c.points.length === 0) { $('typeEditorError').textContent = '没有可导出的点位'; return }
+      const typeName = $('typeNameInput').value.trim() || t.name
+      const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+      const payload = { schema: 'modbusmate-points@1', typeName, exportedAt: new Date().toISOString(), points: c.points }
+      const r = await window.api.exportPoints({ defaultName: `点表-${typeName}-${stamp}.json`, json: JSON.stringify(payload, null, 2) })
+      if (r.ok) $('typeEditorError').textContent = ''
+      else if (!r.canceled) $('typeEditorError').textContent = '导出失败：' + r.error
+    }
+
+    // ── 点表导入：校验通过后替换编辑器表格，点「保存」才落库 ──
+    $('importPointsBtn').onclick = async () => {
+      const r = await window.api.importPoints()
+      if (!r.ok) { if (!r.canceled) $('typeEditorError').textContent = '读取文件失败：' + r.error; return }
+      let raw
+      try { raw = JSON.parse(r.content) } catch { $('typeEditorError').textContent = '导入失败：文件不是有效的 JSON'; return }
+      const v = Codec.validatePoints(raw)
+      if (!v.ok) { $('typeEditorError').textContent = '导入失败：' + v.error; return }
+      if (state.types[idx].points.length > 0 && !confirm(`导入将替换当前 ${state.types[idx].points.length} 个点位，是否继续？`)) return
+      state.types[idx].points = v.points
+      renderTypePoints(state.types[idx], idx)
+      $('typeEditorError').textContent = ''
+    }
   }
 
   function addPointRow(tbody, p, typeIdx, pointIdx) {
@@ -426,10 +439,10 @@ const DeviceUI = (() => {
       <td><input class="tp-addr" type="number" value="${p.addr}" min="0" max="65535"></td>
       <td><select class="tp-type">${typeOptions}</select></td>
       <td><select class="tp-order"><option ${p.wordOrder === 'AB' ? 'selected' : ''}>AB</option><option ${p.wordOrder === 'BA' ? 'selected' : ''}>BA</option></select></td>
-      <td><input class="tp-k" type="number" step="any" value="${p.k}" style="width:60px"></td>
-      <td><input class="tp-b" type="number" step="any" value="${p.b}" style="width:60px"></td>
-      <td><input class="tp-dec" type="number" min="0" max="6" value="${p.decimals ?? ''}" placeholder="自动" style="width:60px"></td>
-      <td><input class="tp-unit" value="${escapeHtml(p.unit)}" placeholder="单位" style="width:50px"></td>
+      <td><input class="tp-k" type="number" step="any" value="${p.k}"></td>
+      <td><input class="tp-b" type="number" step="any" value="${p.b}"></td>
+      <td><input class="tp-dec" type="number" min="0" max="6" value="${p.decimals ?? ''}" placeholder="自动"></td>
+      <td><input class="tp-unit" value="${escapeHtml(p.unit)}" placeholder="单位"></td>
       <td><button class="tp-del-btn">×</button></td>`
     tr.querySelector('.tp-del-btn').addEventListener('click', () => {
       state.types[typeIdx].points.splice(pointIdx, 1)
@@ -463,7 +476,7 @@ const DeviceUI = (() => {
       if (!host) { $('instModalError').textContent = '请输入设备 IP'; return }
       if (!Number.isInteger(port) || port < 1 || port > 65535) { $('instModalError').textContent = '端口范围 1~65535'; return }
       if (!Number.isInteger(unitId) || unitId < 0 || unitId > 255) { $('instModalError').textContent = '从站 ID 范围 0~255'; return }
-      if (![100, 500, 1000, 2000, 5000, 10000].includes(interval)) { $('instModalError').textContent = '周期值无效'; return }
+      if (![100, 500, 1000, 2000, 5000, 10000, 15000].includes(interval)) { $('instModalError').textContent = '周期值无效'; return }
       state.instances.push({ id: genId(), typeId, name, host, port, unitId, interval, iconIdx: getSelectedIconIdx() })
       await saveToConfig(); closeInstanceModal(); renderMgrPage(); renderOverviewPage()
       log('info', `已添加设备实例「${name}」`)
@@ -501,7 +514,7 @@ const DeviceUI = (() => {
       if (!host) { $('instModalError').textContent = '请输入设备 IP'; return }
       if (!Number.isInteger(port) || port < 1 || port > 65535) { $('instModalError').textContent = '端口范围 1~65535'; return }
       if (!Number.isInteger(unitId) || unitId < 0 || unitId > 255) { $('instModalError').textContent = '从站 ID 范围 0~255'; return }
-      if (![100, 500, 1000, 2000, 5000, 10000].includes(interval)) { $('instModalError').textContent = '周期值无效'; return }
+      if (![100, 500, 1000, 2000, 5000, 10000, 15000].includes(interval)) { $('instModalError').textContent = '周期值无效'; return }
       Object.assign(inst, { typeId, name, host, port, unitId, interval, iconIdx: getSelectedIconIdx() })
       await saveToConfig(); closeInstanceModal(); renderMgrPage(); renderOverviewPage()
       log('info', `已更新设备实例「${name}」`)

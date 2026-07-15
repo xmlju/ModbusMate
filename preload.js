@@ -21,6 +21,10 @@ contextBridge.exposeInMainWorld('api', {
   onDeviceStatus: fn => ipcRenderer.on('device:status', (_e, s) => fn(s)),
   onDeviceLog:    fn => ipcRenderer.on('device:log',    (_e, l) => fn(l)),
 
+  // 点表导入导出
+  exportPoints: p => ipcRenderer.invoke('points:export', p),
+  importPoints: () => ipcRenderer.invoke('points:import'),
+
   // 设备图片
   copyImage: (srcPath) => ipcRenderer.invoke('copy-image', srcPath),
   readImage: (relativePath) => ipcRenderer.invoke('read-image', relativePath),

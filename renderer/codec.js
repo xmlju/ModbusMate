@@ -105,7 +105,38 @@ const Codec = (() => {
     return decimals === null ? y : Number(y.toFixed(decimals))
   }
 
-  return { TYPES, decode, encode, toPlcAddress, toProtocolAddress, applyTransform }
+  const AREAS = ['holding', 'input', 'coil', 'discrete']
+
+  // 校验导入的点表数据（完整对象取 points 字段，或裸点位数组）
+  // 返回 { ok, error, points }；points 为规范化后的副本，缺省字段补默认值
+  function validatePoints(raw) {
+    const arr = Array.isArray(raw) ? raw : raw?.points
+    if (!Array.isArray(arr)) return { ok: false, error: '文件格式错误：未找到点位数组' }
+    if (arr.length === 0) return { ok: false, error: '点位列表为空' }
+    const points = []
+    for (let i = 0; i < arr.length; i++) {
+      const p = arr[i]; const row = `第 ${i + 1} 个点位`
+      if (!p || typeof p !== 'object') return { ok: false, error: `${row}：格式错误` }
+      const name = String(p.name ?? '').trim()
+      if (!name) return { ok: false, error: `${row}：缺少名称` }
+      if (!AREAS.includes(p.area)) return { ok: false, error: `${row}「${name}」：区域无效（${p.area}）` }
+      if (!(p.type in TYPES)) return { ok: false, error: `${row}「${name}」：数据类型无效（${p.type}）` }
+      const addr = Number(p.addr)
+      if (!Number.isInteger(addr) || addr < 0 || addr > 65535) return { ok: false, error: `${row}「${name}」：地址应为 0~65535 的整数` }
+      const k = p.k === undefined ? 1 : Number(p.k)
+      const b = p.b === undefined ? 0 : Number(p.b)
+      if (Number.isNaN(k) || Number.isNaN(b)) return { ok: false, error: `${row}「${name}」：k/b 必须是数字` }
+      let decimals = null
+      if (p.decimals !== null && p.decimals !== undefined && p.decimals !== '') {
+        decimals = Number(p.decimals)
+        if (!Number.isInteger(decimals) || decimals < 0 || decimals > 6) return { ok: false, error: `${row}「${name}」：小数位应为 0~6 的整数` }
+      }
+      points.push({ name, area: p.area, addr, type: p.type, wordOrder: p.wordOrder === 'BA' ? 'BA' : 'AB', k, b, decimals, unit: String(p.unit ?? '').trim() })
+    }
+    return { ok: true, points }
+  }
+
+  return { TYPES, decode, encode, toPlcAddress, toProtocolAddress, applyTransform, validatePoints }
 })()
 
 if (typeof module !== 'undefined' && module.exports) module.exports = Codec
