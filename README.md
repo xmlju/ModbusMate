@@ -82,6 +82,21 @@ You can run both simulators simultaneously (each in its own terminal window).
 - **Windows**: 7+
 - **Network**: Computer and device must be on the same network
 
+### 2.4 Browser Debug Mode (`npm run web`)
+
+For field debugging without building/installing the desktop app, run ModbusMate directly in a local browser tab from source:
+
+```bash
+npm install
+npm run web
+```
+
+This starts a local-only HTTP server (bound to `127.0.0.1`, random port and session token) and opens your default browser to a URL like `http://127.0.0.1:8765/?token=...`. Keep the terminal open — closing it (Ctrl+C / SIGINT) shuts the service and disconnects any open device connections. Every page (Workbench, Dashboard, Device Debug, Type/Instance Manager) works exactly the same as in the Electron app, including RTU (see §4.4).
+
+Useful environment overrides: `MODBUSMATE_WEB_PORT` (fixed port instead of random), `MODBUSMATE_DATA_DIR` (where `config.json` is stored). Pass `--no-open` to skip auto-opening a browser tab (used in CI/automated smoke tests).
+
+> The web server only ever listens on the loopback address and requires the exact token from its own URL — it is not reachable from other devices on your network.
+
 ---
 
 ## 3. Interface Layout
@@ -125,13 +140,37 @@ You can run both simulators simultaneously (each in its own terminal window).
 4. Click **「Connect」**
 5. Green light = connected; Red light = failed
 
-### 4.3 Troubleshooting
+### 4.3 Troubleshooting (TCP)
 
 | Symptom | Possible Cause |
 |---------|---------------|
 | "Connection refused" | Device Modbus-TCP service not running, or wrong port |
 | "No response" | Network cable unplugged, device off, wrong IP |
 | "Host not found" | Wrong IP address |
+
+### 4.4 Modbus-RTU (USB/RS485) Devices
+
+ModbusMate also supports Modbus-RTU over a USB-to-RS485 adapter, on both the Electron app and browser debug mode (`npm run web`). One serial port is dedicated to one RTU slave.
+
+**Steps:**
+
+1. Plug in your USB-RS485 adapter. Set the connection bar's **Communication Method** dropdown to **RTU (USB/RS485)** — this appears on the Workbench connection bar and in the device instance dialog.
+2. Click **「Refresh Serial Ports」**. Available ports are listed:
+   - **macOS**: `/dev/tty.usbserial-*`, `/dev/tty.usbmodem-*` (varies by adapter chipset — FTDI, CH340, CP210x, etc.)
+   - **Windows**: `COM3`, `COM4`, … (check Device Manager → Ports (COM & LPT) if the port doesn't show up — you may need the adapter's driver)
+3. Set the serial parameters to match your device's protocol. Common defaults: **9600 baud, 8 data bits, no parity, 1 stop bit (9600 8N1)**, Slave ID `1`, timeout `2000ms`.
+4. Click **「Connect」**.
+
+**Wiring:** Connect the adapter's `A`/`B` (or `D+`/`D-`) terminals to the matching terminals on the device — swapped A/B is the most common cause of "no response" on an otherwise-correct RTU setup.
+
+**Troubleshooting (RTU)**
+
+| Symptom | Possible Cause |
+|---------|---------------|
+| Serial port permission denied | Another program (or a leftover ModbusMate session) holds the port; on macOS you may need to grant Terminal/App access to USB devices |
+| Serial port busy | Close other serial tools (e.g. a terminal emulator, PLC config software) using the same port, then refresh |
+| Port not found after unplug | Port list is stale — click **「Refresh Serial Ports」** after reconnecting the adapter |
+| Communication timeout | Check A/B wiring, baud rate/parity/stop bits match the device, and the Slave ID is correct |
 
 ---
 

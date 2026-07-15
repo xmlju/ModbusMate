@@ -8,6 +8,8 @@ import path from 'path'
 
 const { startWebServer } = require('../main/web-server')
 const { parseCliArgs, createOpenCommand } = require('../scripts/start-web')
+const { createWebRuntime } = require('../main/web-runtime')
+const { createConfigStore } = require('../main/config-store')
 
 const running = new Set()
 
@@ -469,6 +471,123 @@ describe('安全本地 Web 服务', () => {
     })).rejects.toMatchObject({ code: 'EADDRINUSE' })
     expect(runtime.close).toHaveBeenCalledTimes(1)
     await new Promise(resolve => occupied.close(resolve))
+  })
+})
+
+describe('浏览器入口冒烟', () => {
+  function createRealRuntime(configFilePath) {
+    const service = { connect: vi.fn(async () => undefined), disconnect: vi.fn(async () => undefined), write: vi.fn(async () => undefined) }
+    const poller = Object.assign(new EventEmitter(), { running: false, start: vi.fn(), stop: vi.fn() })
+    const deviceManager = Object.assign(new EventEmitter(), { stopAll: vi.fn(async () => undefined) })
+    const listSerialPorts = vi.fn(async () => [{ path: 'COM3', manufacturer: 'FTDI' }, { path: '/dev/tty.usbserial-1' }])
+    return createWebRuntime({
+      service, poller, deviceManager, listSerialPorts,
+      configStore: createConfigStore(configFilePath),
+    })
+  }
+
+  it('GET / 返回调试页面，全部渲染脚本静态资源均可 200 加载', async () => {
+    const app = await start()
+    const index = await request(app)
+    expect(index.status).toBe(200)
+    expect(index.text).toContain('<!DOCTYPE html>')
+
+    const scripts = [...index.text.matchAll(/<script src="([a-zA-Z0-9._-]+\.js)"/g)].map(m => m[1])
+    expect(scripts).toEqual(expect.arrayContaining([
+      'web-api.js', 'connection-ui.js', 'codec.js', 'read-plan.js', 'seed-data.js', 'device-config.js', 'device.js', 'app.js',
+    ]))
+    for (const script of scripts) {
+      const response = await request(app, { pathname: `/${script}` })
+      expect(response.status, script).toBe(200)
+    }
+
+    await close(app)
+  })
+
+  it('config:save / config:load 通过真实配置存储原样往返', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'modbusmate-web-config-'))
+    const runtime = createRealRuntime(path.join(dir, 'config.json'))
+    const app = await start({ runtime })
+
+    const saved = { transport: 'rtu', serialPath: 'COM3', baudRate: 9600 }
+    const saveRes = await request(app, {
+      method: 'POST', pathname: '/api/invoke/config%3Asave',
+      headers: rpcHeaders(app), body: JSON.stringify({ args: [saved] }),
+    })
+    expect(saveRes.status).toBe(200)
+    expect(JSON.parse(saveRes.text)).toEqual({ ok: true, value: { ok: true } })
+
+    const loadRes = await request(app, {
+      method: 'POST', pathname: '/api/invoke/config%3Aload',
+      headers: rpcHeaders(app), body: JSON.stringify({ args: [] }),
+    })
+    expect(JSON.parse(loadRes.text)).toEqual({ ok: true, value: saved })
+
+    await close(app)
+    fs.rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('serial:list 通过 RPC 返回稳定的串口数组', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'modbusmate-web-serial-'))
+    const runtime = createRealRuntime(path.join(dir, 'config.json'))
+    const app = await start({ runtime })
+
+    const res = await request(app, {
+      method: 'POST', pathname: '/api/invoke/serial%3Alist',
+      headers: rpcHeaders(app), body: JSON.stringify({ args: [] }),
+    })
+    expect(JSON.parse(res.text)).toEqual({
+      ok: true,
+      value: [{ path: 'COM3', manufacturer: 'FTDI' }, { path: '/dev/tty.usbserial-1' }],
+    })
+
+    await close(app)
+    fs.rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('非法 token、Origin 和路径穿越均被拒绝', async () => {
+    const app = await start()
+    const noToken = await request(app, {
+      method: 'POST', pathname: '/api/invoke/config%3Aload',
+      headers: { ...rpcHeaders(app), 'x-modbusmate-token': '' }, body: JSON.stringify({ args: [] }),
+    })
+    expect(noToken.status).toBe(401)
+
+    const badOrigin = await request(app, {
+      method: 'POST', pathname: '/api/invoke/config%3Aload',
+      headers: { ...rpcHeaders(app), origin: 'http://evil.test' }, body: JSON.stringify({ args: [] }),
+    })
+    expect(badOrigin.status).toBe(403)
+
+    const traversal = await request(app, { pathname: '/..%2fpackage.json' })
+    expect([400, 403, 404]).toContain(traversal.status)
+
+    await close(app)
+  })
+
+  it('服务关闭后端口可立即被重新绑定', async () => {
+    const first = await start()
+    const port = first.address.port
+    await close(first)
+
+    const second = await start({ port })
+    expect(second.address.port).toBe(port)
+    await close(second)
+  })
+
+  it('页面同时包含调试工作台与实例弹窗的全部 TCP/RTU 必需字段', async () => {
+    const app = await start()
+    const index = await request(app)
+    for (const id of [
+      'transport', 'tcpFields', 'host', 'port', 'rtuFields', 'serialPath', 'refreshSerialBtn',
+      'baudRate', 'dataBits', 'parity', 'stopBits', 'unitId', 'timeout',
+      'instTransport', 'instTcpFields', 'instHost', 'instPort', 'instRtuFields', 'instSerialPath',
+      'instRefreshSerialBtn', 'instBaudRate', 'instDataBits', 'instParity', 'instStopBits',
+      'instUnitId', 'instTimeout',
+    ]) {
+      expect(index.text, id).toContain(`id="${id}"`)
+    }
+    await close(app)
   })
 })
 
