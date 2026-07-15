@@ -332,6 +332,148 @@ describe('TcpTransport 连接生命周期', () => {
 })
 
 describe('ModbusTransport 读写', () => {
+  it('disconnect 等待在途读取完成后再关闭客户端', async () => {
+    const readGate = createDeferred()
+    const readStarted = createDeferred()
+    const client = createFakeClient({
+      isOpen: true,
+      readHoldingRegisters: vi.fn().mockImplementation(async () => {
+        readStarted.resolve()
+        await readGate.promise
+        return { data: [123] }
+      }),
+    })
+    const transport = new ModbusTransport(() => client)
+    transport.client = client
+
+    const reading = transport.read('holding', 0, 1)
+    await readStarted.promise
+    const disconnecting = transport.disconnect()
+    await Promise.resolve()
+
+    expect(client.close).not.toHaveBeenCalled()
+    readGate.resolve()
+    await expect(reading).resolves.toEqual([123])
+    await disconnecting
+
+    expect(client.close).toHaveBeenCalledOnce()
+    expect(transport.client).toBeNull()
+  })
+
+  it('reconnect 等待在途写入完成后再替换客户端', async () => {
+    const writeGate = createDeferred()
+    const writeStarted = createDeferred()
+    const first = createFakeClient({
+      isOpen: true,
+      writeRegister: vi.fn().mockImplementation(async () => {
+        writeStarted.resolve()
+        await writeGate.promise
+        return { address: 5 }
+      }),
+    })
+    const second = createFakeClient()
+    const transport = new TcpTransport(vi.fn(() => second))
+    transport.client = first
+    transport.params = { host: 'device', port: 502, unitId: 1, timeout: 2000 }
+
+    const writing = transport.write('holding', 5, [99])
+    await writeStarted.promise
+    const reconnecting = transport.reconnect()
+    await Promise.resolve()
+
+    expect(first.close).not.toHaveBeenCalled()
+    expect(second.connectTCP).not.toHaveBeenCalled()
+    writeGate.resolve()
+    await writing
+    await reconnecting
+
+    expect(first.close).toHaveBeenCalledOnce()
+    expect(second.connectTCP).toHaveBeenCalledOnce()
+    expect(transport.client).toBe(second)
+  })
+
+  it('reconnect 新客户端打开期间的读取排队并使用新客户端', async () => {
+    const openGate = createDeferred()
+    const openStarted = createDeferred()
+    const first = createFakeClient({ isOpen: true })
+    const second = createFakeClient({
+      connectTCP: vi.fn().mockImplementation(async function () {
+        openStarted.resolve()
+        await openGate.promise
+        this.isOpen = true
+      }),
+      readHoldingRegisters: vi.fn().mockResolvedValue({ data: [456] }),
+    })
+    const transport = new TcpTransport(vi.fn(() => second))
+    transport.client = first
+    transport.params = { host: 'device', port: 502, unitId: 1, timeout: 2000 }
+
+    const reconnecting = transport.reconnect()
+    await openStarted.promise
+    const reading = transport.read('holding', 0, 1)
+
+    expect(first.readHoldingRegisters).not.toHaveBeenCalled()
+    expect(second.readHoldingRegisters).not.toHaveBeenCalled()
+    openGate.resolve()
+
+    await reconnecting
+    await expect(reading).resolves.toEqual([456])
+    expect(first.readHoldingRegisters).not.toHaveBeenCalled()
+    expect(second.readHoldingRegisters).toHaveBeenCalledWith(0, 1)
+  })
+
+  it('单次读取失败不阻塞后续读取', async () => {
+    const original = new Error('首次读取失败')
+    const firstGate = createDeferred()
+    const firstStarted = createDeferred()
+    const client = createFakeClient({
+      readHoldingRegisters: vi.fn()
+        .mockImplementationOnce(async () => {
+          firstStarted.resolve()
+          await firstGate.promise
+          throw original
+        })
+        .mockResolvedValueOnce({ data: [789] }),
+    })
+    const transport = new ModbusTransport(() => client)
+    transport.client = client
+
+    const failedRead = transport.read('holding', 0, 1)
+    await firstStarted.promise
+    const recoveredRead = transport.read('holding', 1, 1)
+
+    expect(client.readHoldingRegisters).toHaveBeenCalledTimes(1)
+    firstGate.resolve()
+    await expect(failedRead).rejects.toBe(original)
+    await expect(recoveredRead).resolves.toEqual([789])
+    expect(client.readHoldingRegisters).toHaveBeenCalledTimes(2)
+  })
+
+  it('两个普通读取按调用顺序串行执行', async () => {
+    const firstGate = createDeferred()
+    const firstStarted = createDeferred()
+    const client = createFakeClient({
+      readHoldingRegisters: vi.fn()
+        .mockImplementationOnce(async () => {
+          firstStarted.resolve()
+          await firstGate.promise
+          return { data: [1] }
+        })
+        .mockResolvedValueOnce({ data: [2] }),
+    })
+    const transport = new ModbusTransport(() => client)
+    transport.client = client
+
+    const firstRead = transport.read('holding', 0, 1)
+    await firstStarted.promise
+    const secondRead = transport.read('holding', 1, 1)
+
+    expect(client.readHoldingRegisters).toHaveBeenCalledTimes(1)
+    firstGate.resolve()
+    await expect(Promise.all([firstRead, secondRead])).resolves.toEqual([[1], [2]])
+    expect(client.readHoldingRegisters).toHaveBeenNthCalledWith(2, 1, 1)
+  })
+
   it('读取保持寄存器并返回普通数组', async () => {
     const data = Uint16Array.from([100, 200])
     const client = createFakeClient({

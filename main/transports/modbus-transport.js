@@ -77,7 +77,7 @@ class ModbusTransport {
     this.createClient = createClient
     this.client = null
     this.params = null
-    this._lifecycleQueue = Promise.resolve()
+    this._operationQueue = Promise.resolve()
   }
 
   get connected() {
@@ -85,7 +85,7 @@ class ModbusTransport {
   }
 
   async connect(params) {
-    return this._enqueueLifecycle(() => this._connectNow(params))
+    return this._enqueueOperation(() => this._connectNow(params))
   }
 
   async _connectNow(params) {
@@ -121,14 +121,14 @@ class ModbusTransport {
   }
 
   async reconnect() {
-    return this._enqueueLifecycle(async () => {
+    return this._enqueueOperation(async () => {
       if (!this.params) throw new Error('尚未配置过连接参数')
       await this._connectNow(this.params)
     })
   }
 
   async disconnect() {
-    return this._enqueueLifecycle(() => this._disconnectNow())
+    return this._enqueueOperation(() => this._disconnectNow())
   }
 
   async _disconnectNow() {
@@ -141,10 +141,10 @@ class ModbusTransport {
     if (this.client === client) this.client = null
   }
 
-  _enqueueLifecycle(operation) {
-    const pending = this._lifecycleQueue.then(operation)
-    // 单次失败由调用者接收，但不阻塞后续生命周期操作
-    this._lifecycleQueue = pending.catch(() => {})
+  _enqueueOperation(operation) {
+    const pending = this._operationQueue.then(operation)
+    // 单次失败由调用者接收，但不阻塞后续操作
+    this._operationQueue = pending.catch(() => {})
     return pending
   }
 
@@ -157,6 +157,10 @@ class ModbusTransport {
     const reader = AREA_READERS[area]
     if (!reader) throw new Error(`未知区域类型: ${area}`)
 
+    return this._enqueueOperation(() => this._readNow(reader, addr, count))
+  }
+
+  async _readNow(reader, addr, count) {
     try {
       const result = await this.client[reader.fn](addr, count)
       if (reader.isBit) {
@@ -177,6 +181,10 @@ class ModbusTransport {
       throw new Error(`未知区域类型: ${area}`)
     }
 
+    return this._enqueueOperation(() => this._writeNow(area, addr, words))
+  }
+
+  async _writeNow(area, addr, words) {
     try {
       if (area === 'coil') {
         return await this.client.writeCoil(addr, words[0] === 1)
