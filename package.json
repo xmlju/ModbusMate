@@ -1,6 +1,6 @@
 {
   "name": "modbusmate",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "private": true,
   "description": "Modbus 设备调试器 — 支持 Modbus-TCP 与 Modbus-RTU",
   "author": "xmlju",
@@ -43,24 +43,13 @@
     "win": {
       "target": [
         {
-          "target": "nsis",
-          "arch": ["x64"]
-        },
-        {
           "target": "portable",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "legalTrademarks": "ModbusMate"
-    },
-    "nsis": {
-      "oneClick": false,
-      "perMachine": false,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
-      "runAfterFinish": false,
-      "unicode": true,
-      "artifactName": "${productName}-安装版-${version}-win64.${ext}"
     },
     "portable": {
       "artifactName": "${productName}-便携版-${version}-win64.${ext}",
@@ -70,7 +59,10 @@
       "target": [
         {
           "target": "dmg",
-          "arch": ["x64", "arm64"]
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         }
       ]
     }
