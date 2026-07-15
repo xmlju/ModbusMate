@@ -51,8 +51,10 @@ const DeviceUI = (() => {
   }
 
   function loadFromConfig(cfg) {
-    if (Array.isArray(cfg.deviceTypes)) state.types = cfg.deviceTypes
-    if (Array.isArray(cfg.deviceInstances)) state.instances = cfg.deviceInstances
+    const loaded = DeviceConfig.normalizeLoadedDevices(cfg)
+    state.types = loaded.types
+    state.instances = loaded.instances
+    loaded.warnings.forEach(message => log('error', `配置加载警告：${message}`))
     state.instances.forEach(inst => {
       const n = parseInt(inst.id.replace('dev', ''))
       if (n >= nextId) nextId = n + 1
@@ -60,13 +62,13 @@ const DeviceUI = (() => {
   }
 
   async function saveToConfig() {
-    try {
-      const cfg = await window.api.loadConfig()
-      await window.api.saveConfig({ ...cfg, deviceTypes: state.types, deviceInstances: state.instances })
-    } catch (e) {
-      console.error('saveToConfig 失败', e)
-      alert('保存配置失败: ' + (e.message || e))
-    }
+    const cfg = await window.api.loadConfig()
+    await window.api.saveConfig({ ...cfg, deviceTypes: state.types, deviceInstances: state.instances })
+  }
+
+  async function persistInstances(nextInstances) {
+    const cfg = await window.api.loadConfig()
+    await window.api.saveConfig({ ...cfg, deviceInstances: nextInstances })
   }
 
   function log(level, message) {
@@ -78,28 +80,45 @@ const DeviceUI = (() => {
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
   }
 
+  function escapeAttr(s) {
+    return escapeHtml(s).replace(/'/g, '&#39;')
+  }
+
   // ── 获取预设图标 data URI ──
   function getIconSrc(inst) {
     const idx = inst.iconIdx != null ? inst.iconIdx : 0
     return PRESET_ICONS[idx] || PRESET_ICONS[0]
   }
 
-  // ── 渲染图标选择器 ──
+  // ── 渲染图标选择器（可聚焦 radio button + roving tabindex）──
   function renderIconSelector(selectedIdx) {
     const container = $('iconSelector')
     if (!container) return
-    container.innerHTML = PRESET_ICONS.map((svg, i) =>
-      `<div class="icon-opt ${i === selectedIdx ? 'active' : ''}" data-idx="${i}" title="${PRESET_ICON_LABELS[i]}">
-        <img src="${svg}" width="32" height="32" alt="${PRESET_ICON_LABELS[i]}">
-        <span>${PRESET_ICON_LABELS[i]}</span>
-      </div>`
-    ).join('')
-    container.querySelectorAll('.icon-opt').forEach(el => {
-      el.addEventListener('click', () => {
-        container.querySelectorAll('.icon-opt').forEach(o => o.classList.remove('active'))
-        el.classList.add('active')
+    container.replaceChildren()
+    const buttons = PRESET_ICONS.map((svg, i) => {
+      const button = document.createElement('button')
+      button.type = 'button'
+      button.className = 'icon-opt'
+      button.dataset.idx = String(i)
+      button.title = PRESET_ICON_LABELS[i]
+      button.setAttribute('role', 'radio')
+      button.innerHTML = `<img src="${svg}" width="32" height="32" alt="${PRESET_ICON_LABELS[i]}">
+        <span>${PRESET_ICON_LABELS[i]}</span>`
+      container.appendChild(button)
+      return button
+    })
+    buttons.forEach((button, i) => {
+      button.addEventListener('click', () => DeviceConfig.applyRadioSelection(buttons, i))
+      button.addEventListener('keydown', event => {
+        if (!['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp'].includes(event.key)) return
+        event.preventDefault()
+        const forward = event.key === 'ArrowRight' || event.key === 'ArrowDown'
+        const next = (i + (forward ? 1 : buttons.length - 1)) % buttons.length
+        DeviceConfig.applyRadioSelection(buttons, next)
+        buttons[next].focus()
       })
     })
+    DeviceConfig.applyRadioSelection(buttons, selectedIdx)
   }
 
   function getSelectedIconIdx() {
@@ -108,7 +127,13 @@ const DeviceUI = (() => {
   }
 
   // ── 实例启停 ──
-  async function toggleInstance(id) {
+  const instanceToggleRunner = DeviceConfig.createKeyedExclusiveRunner()
+
+  function toggleInstance(id) {
+    return instanceToggleRunner.run(id, () => toggleInstanceNow(id))
+  }
+
+  async function toggleInstanceNow(id) {
     if (state.running[id]) {
       await window.api.deviceStop(id)
       state.running[id] = false; state.statuses[id] = 'disconnected'
@@ -143,7 +168,8 @@ const DeviceUI = (() => {
     state.statuses[s.id] = s.state
     if (s.state === 'disconnected') state.running[s.id] = false
     // 更新总览页状态
-    const group = document.querySelector(`.dev-group[data-inst-id="${s.id}"]`)
+    const group = [...document.querySelectorAll('.dev-group[data-inst-id]')]
+      .find(element => element.dataset.instId === String(s.id))
     if (group) {
       const dot = group.querySelector('.dev-head .dot')
       if (dot) dot.className = 'dot ' + (s.state === 'connected' ? 'good' : s.state === 'offline' ? 'warn' : s.state === 'error' ? 'crit' : 'idle')
@@ -183,16 +209,17 @@ const DeviceUI = (() => {
       const statusDot = !running ? 'idle' : status === 'connected' ? 'good' : status === 'offline' ? 'warn' : 'crit'
       const statusText = !running ? '已停止' : status === 'connected' ? '在线' : status === 'offline' ? '离线·重连中' : '连接失败'
       const thumbHtml = `<img class="dev-thumb-img" src="${getIconSrc(inst)}">`
-      html += `<section class="dev-group ${offline ? 'offline' : ''}" data-inst-id="${inst.id}">
+      const safeId = escapeAttr(inst.id)
+      html += `<section class="dev-group ${offline ? 'offline' : ''}" data-inst-id="${safeId}">
         <div class="dev-head">
-          <span class="collapse-toggle" data-inst-id="${inst.id}">▾</span>
+          <span class="collapse-toggle" data-inst-id="${safeId}">▾</span>
           ${thumbHtml}
           <span class="dev-name">${escapeHtml(inst.name)}</span>
           <span class="dev-meta">${escapeHtml(formatConnectionTarget(inst))} · 周期 ${inst.interval}ms</span>
           <span class="pill"><span class="dot ${statusDot}"></span>${statusText}</span>
-          <button class="btn ghost sm dev-toggle-ov" data-id="${inst.id}">${running ? '⏸ 停止' : '▶ 启动'}</button>
+          <button class="btn ghost sm dev-toggle-ov" data-id="${safeId}">${running ? '⏸ 停止' : '▶ 启动'}</button>
         </div>
-        <div class="dev-body" id="ovBody_${inst.id}"></div>
+        <div class="dev-body" id="ovBody_${safeId}"></div>
       </section>`
     })
     content.innerHTML = html
@@ -285,13 +312,14 @@ const DeviceUI = (() => {
           const running = state.running[inst.id]
           const status = state.statuses[inst.id] || 'disconnected'
           const dotCls = status === 'connected' ? 'good' : status === 'offline' ? 'warn' : status === 'error' ? 'crit' : 'idle'
+          const safeId = escapeAttr(inst.id)
           return `<div class="mgr-row">
             <span class="dot ${dotCls}"></span>
             <span class="mgr-name">${escapeHtml(inst.name)}</span>
             <span class="mgr-meta">${type ? escapeHtml(type.name) : '（未知）'} · ${escapeHtml(formatConnectionTarget(inst))} · ${running ? '运行中' : '已停止'}</span>
-            <button class="btn ghost sm mgr-toggle-inst" data-id="${inst.id}">${running ? '停止' : '启动'}</button>
-            <button class="btn ghost sm mgr-edit-inst" data-id="${inst.id}">编辑</button>
-            <button class="btn ghost sm mgr-del-inst" style="border-color:var(--status-critical);color:var(--status-critical)" data-id="${inst.id}">删除</button>
+            <button class="btn ghost sm mgr-toggle-inst" data-id="${safeId}">${running ? '停止' : '启动'}</button>
+            <button class="btn ghost sm mgr-edit-inst" data-id="${safeId}">编辑</button>
+            <button class="btn ghost sm mgr-del-inst" style="border-color:var(--status-critical);color:var(--status-critical)" data-id="${safeId}">删除</button>
           </div>`
         }).join('')
         // 直接绑定实例启停/编辑/删除
@@ -309,8 +337,14 @@ const DeviceUI = (() => {
     const used = state.instances.some(inst => inst.typeId === t.id)
     if (used) { alert(`类型「${t.name}」已被实例引用，请先删除相关实例`); return }
     if (!confirm(`确定删除类型「${t.name}」？`)) return
-    state.types.splice(idx, 1)
-    await saveToConfig(); renderMgrPage(); renderOverviewPage()
+    const previousTypes = state.types
+    state.types = state.types.filter((_, typeIndex) => typeIndex !== idx)
+    try {
+      await saveToConfig(); renderMgrPage(); renderOverviewPage()
+    } catch (error) {
+      state.types = previousTypes
+      alert('删除类型失败：' + (error.message || error))
+    }
   }
 
   async function deleteInstance(id) {
@@ -320,13 +354,20 @@ const DeviceUI = (() => {
       if (!confirm(`确定删除实例「${inst.name}」？`)) return
       // 页面刷新后 running 状态可能为空，仍必须让后端幂等停止该实例。
       await DeviceConfig.deleteInstanceSafely(id, window.api.deviceStop, async () => {
-        state.instances = state.instances.filter(i => i.id !== id)
-        delete state.running[id]; delete state.statuses[id]; delete state.data[id]
-        await saveToConfig(); renderMgrPage(); renderOverviewPage()
+        const nextInstances = state.instances.filter(i => i.id !== id)
+        await DeviceConfig.commitInstanceList(nextInstances, persistInstances, next => { state.instances = next })
+      }, () => {
+        state.running[id] = false
+        state.statuses[id] = 'disconnected'
       })
+      delete state.running[id]; delete state.statuses[id]; delete state.data[id]
+      renderMgrPage(); renderOverviewPage()
     } catch (e) {
       console.error('deleteInstance 异常', e)
-      alert('删除失败: ' + (e.message || e))
+      if (e.deviceStoppedBeforeDelete) { renderMgrPage(); renderOverviewPage() }
+      alert(e.deviceStoppedBeforeDelete
+        ? `设备已停止但删除配置保存失败，可重试：${e.message || e}`
+        : '删除失败: ' + (e.message || e))
     }
   }
 
@@ -353,7 +394,7 @@ const DeviceUI = (() => {
   }
 
   // 保存回调（编辑/新建共用）：校验 → 写回类型 → 落库
-  function saveTypeFromEditor(t) {
+  async function saveTypeFromEditor(t) {
     const name = $('typeNameInput').value.trim()
     if (!name) { $('typeEditorError').textContent = '类型名称不能为空'; return }
     const c = collectPointsFromTable()
@@ -362,7 +403,11 @@ const DeviceUI = (() => {
     if (plan.length > 8) { if (!confirm(`点位过于分散，将产生 ${plan.length} 个读取块，可能影响采集效率。是否继续？`)) return }
     t.name = name
     t.points = c.points
-    saveToConfig(); closeTypeEditor(); renderMgrPage(); renderOverviewPage()
+    try {
+      await saveToConfig(); closeTypeEditor(); renderMgrPage(); renderOverviewPage()
+    } catch (error) {
+      $('typeEditorError').textContent = '保存类型失败：' + (error.message || error)
+    }
   }
 
   function openTypeEditor(idx) {
@@ -458,6 +503,22 @@ const DeviceUI = (() => {
   const instanceSerialLoader = ConnectionUI.createSerialPortLoader(() => window.api.listSerialPorts())
   const instanceModalGuard = DeviceConfig.createSessionGuard()
   let instanceModalSession = null
+  let instancePreviousFocus = null
+  let instanceKeydownHandler = null
+  const instanceSaveAction = DeviceConfig.createExclusiveAction(pending => {
+    $('instModalOk').disabled = pending
+    $('instModalCancel').disabled = pending
+  })
+  const instanceDialogKeyController = DeviceConfig.createDialogKeyController({
+    getControls: () => DeviceConfig.getFocusable($('instanceModal')),
+    getActive: () => document.activeElement,
+    onEscape: () => closeInstanceModal(),
+  })
+
+  function handleInstanceModalKeydown(event) {
+    if (event.key === 'Escape' && instanceSaveAction.isPending()) return
+    instanceDialogKeyController.handle(event)
+  }
 
   function updateInstanceConnectionFields(transport, autoRefresh = false) {
     const normalized = ConnectionUI.normalizeTransport(transport)
@@ -539,9 +600,18 @@ const DeviceUI = (() => {
   }
 
   function configureInstanceModal(existing) {
+    instancePreviousFocus = document.activeElement
     instanceModalSession = instanceModalGuard.begin()
     $('instanceModal').classList.remove('hidden')
-    $('instTypeSel').innerHTML = state.types.map(t => `<option value="${t.id}" ${existing?.typeId === t.id ? 'selected' : ''}>${escapeHtml(t.name)}</option>`).join('')
+    const typeSelect = $('instTypeSel')
+    typeSelect.replaceChildren()
+    state.types.forEach(type => {
+      const option = document.createElement('option')
+      option.value = type.id
+      option.textContent = type.name
+      typeSelect.appendChild(option)
+    })
+    if (existing?.typeId) typeSelect.value = existing.typeId
     const view = DeviceConfig.normalizeInstanceView(existing || {
       transport: 'tcp', host: '192.168.1.', port: 502, unitId: 1, timeout: 2000,
     })
@@ -558,6 +628,8 @@ const DeviceUI = (() => {
     $('instInterval').value = existing?.interval || 1000
     $('instModalError').textContent = ''
     $('instModalTitle').textContent = existing ? '编辑设备实例' : '添加设备实例'
+    $('instModalOk').disabled = false
+    $('instModalCancel').disabled = false
     renderIconSelector(existing?.iconIdx != null ? existing.iconIdx : 0)
 
     const serialSelect = $('instSerialPath')
@@ -577,25 +649,32 @@ const DeviceUI = (() => {
     $('instRefreshSerialBtn').onclick = () => refreshInstanceSerialPorts(instanceModalSession)
     if (view.transport === 'rtu') refreshInstanceSerialPorts(instanceModalSession)
 
-    $('instModalOk').onclick = async () => {
+    $('instModalOk').onclick = () => instanceSaveAction.run(async () => {
       try {
         if (existing) DeviceConfig.assertInstanceEditable(state.running[existing.id])
         const record = DeviceConfig.buildInstanceRecord(existing || { id: genId() }, readInstanceFormValues())
+        let nextInstances
         if (existing) {
           const index = state.instances.findIndex(inst => inst.id === existing.id)
           if (index < 0) throw new Error('未找到实例，请刷新页面后重试')
-          state.instances[index] = record
+          nextInstances = state.instances.map((inst, instanceIndex) => instanceIndex === index ? record : inst)
         } else {
-          state.instances.push(record)
+          nextInstances = [...state.instances, record]
         }
-        await saveToConfig(); closeInstanceModal(); renderMgrPage(); renderOverviewPage()
+        await DeviceConfig.commitInstanceList(nextInstances, persistInstances, next => { state.instances = next })
+        closeInstanceModal(true); renderMgrPage(); renderOverviewPage()
         log('info', `${existing ? '已更新' : '已添加'}设备实例「${record.name}」（${formatConnectionTarget(record)}）`)
         if (!existing) window.switchNav('mgr')
         if (window.populateDeviceDebugSel) window.populateDeviceDebugSel()
       } catch (error) {
         $('instModalError').textContent = error.message || String(error)
       }
-    }
+    })
+
+    if (instanceKeydownHandler) document.removeEventListener('keydown', instanceKeydownHandler)
+    instanceKeydownHandler = handleInstanceModalKeydown
+    document.addEventListener('keydown', instanceKeydownHandler)
+    $('instName').focus()
   }
 
   function openInstanceModal() {
@@ -603,12 +682,20 @@ const DeviceUI = (() => {
     configureInstanceModal(null)
   }
 
-  function closeInstanceModal() {
+  function closeInstanceModal(force = false) {
+    if (instanceSaveAction.isPending() && !force) return
     instanceModalGuard.invalidate()
     instanceModalSession = null
+    if (instanceKeydownHandler) {
+      document.removeEventListener('keydown', instanceKeydownHandler)
+      instanceKeydownHandler = null
+    }
     $('instRefreshSerialBtn').textContent = '刷新'
     $('instanceModal').classList.add('hidden')
     $('instModalError').textContent = ''
+    const focusTarget = instancePreviousFocus
+    instancePreviousFocus = null
+    if (focusTarget?.isConnected && typeof focusTarget.focus === 'function') focusTarget.focus()
   }
 
   // ── 编辑实例（复用弹窗） ──

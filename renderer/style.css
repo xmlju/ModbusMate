@@ -236,7 +236,7 @@ td select { padding: 2px 4px; margin-right: 4px; background: var(--surface-2); c
 /* ── 实例管理弹窗表单 ── */
 .inst-form { text-align: left; margin: 14px 0; }
 .inst-form .if-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
-.inst-form .if-row > span { width: 64px; flex-shrink: 0; font-size: 13px; color: var(--ink-2); text-align: right; }
+.inst-form .if-row > span, .inst-form .if-row > label { width: 64px; flex-shrink: 0; font-size: 13px; color: var(--ink-2); text-align: right; }
 .inst-form .if-row > input, .inst-form .if-row > select { flex: 1; padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-2); color: var(--ink-1); min-width: 0; }
 .inst-form .if-row > small { color: var(--ink-3); }
 .inst-connection-fields { display: contents; }

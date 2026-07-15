@@ -10,6 +10,13 @@ const {
   normalizeInstanceView,
   assertInstanceEditable,
   deleteInstanceSafely,
+  commitInstanceList,
+  createExclusiveAction,
+  createKeyedExclusiveRunner,
+  normalizeLoadedDevices,
+  getFocusable,
+  createDialogKeyController,
+  applyRadioSelection,
 } = require('../renderer/device-config.js')
 
 const type = {
@@ -146,6 +153,173 @@ describe('删除设备实例', () => {
     await expect(deleteInstanceSafely('dev1', async () => { throw error }, async () => { removed = true })).rejects.toBe(error)
     expect(removed).toBe(false)
   })
+
+  it('停止成功但配置保存失败时保留实例并标记设备已经停止', async () => {
+    const error = new Error('磁盘写入失败')
+    let stopped = false
+    let removed = false
+    await expect(deleteInstanceSafely(
+      'dev1',
+      async () => {},
+      async () => { throw error },
+      () => { stopped = true },
+    )).rejects.toBe(error)
+    expect(stopped).toBe(true)
+    expect(removed).toBe(false)
+    expect(error.deviceStoppedBeforeDelete).toBe(true)
+  })
+})
+
+describe('实例列表原子事务与独占操作', () => {
+  it('持久化成功后才替换内存实例列表', async () => {
+    const events = []
+    const next = [{ id: 'dev2' }]
+    await commitInstanceList(next, async value => { events.push(['save', value]) }, value => { events.push(['apply', value]) })
+    expect(events).toEqual([['save', next], ['apply', next]])
+  })
+
+  it('持久化失败时不替换内存实例列表', async () => {
+    let applied = false
+    const error = new Error('保存失败')
+    await expect(commitInstanceList([], async () => { throw error }, () => { applied = true })).rejects.toBe(error)
+    expect(applied).toBe(false)
+  })
+
+  it('实例保存双击复用同一请求，失败后恢复按钮并允许重试', async () => {
+    const pendingStates = []
+    const controller = createExclusiveAction(pending => pendingStates.push(pending))
+    let resolve
+    let calls = 0
+    const first = controller.run(() => { calls++; return new Promise(done => { resolve = done }) })
+    const second = controller.run(() => { calls++; return Promise.resolve() })
+    expect(second).toBe(first)
+    expect(calls).toBe(1)
+    expect(controller.isPending()).toBe(true)
+    resolve('ok')
+    await expect(first).resolves.toBe('ok')
+    expect(pendingStates).toEqual([true, false])
+    await expect(controller.run(async () => { calls++; throw new Error('重试失败') })).rejects.toThrow('重试失败')
+    expect(controller.isPending()).toBe(false)
+    expect(calls).toBe(2)
+  })
+
+  it('同一实例启停独占，不同实例可以并行', async () => {
+    const runner = createKeyedExclusiveRunner()
+    let resolveA
+    let callsA = 0
+    const firstA = runner.run('a', () => { callsA++; return new Promise(done => { resolveA = done }) })
+    const secondA = runner.run('a', () => { callsA++; return Promise.resolve() })
+    const b = runner.run('b', async () => 'b')
+    expect(secondA).toBe(firstA)
+    expect(callsA).toBe(1)
+    await expect(b).resolves.toBe('b')
+    resolveA('a')
+    await expect(firstA).resolves.toBe('a')
+    expect(runner.isPending('a')).toBe(false)
+  })
+})
+
+describe('配置加载安全边界', () => {
+  it('跳过恶意标识符并规范周期，合法未来字段继续保留', () => {
+    const result = normalizeLoadedDevices({
+      deviceTypes: [
+        { id: 'battery_1', name: '<安全文本>', points: [] },
+        { id: 'x" onmouseover="alert(1)', name: '恶意', points: [] },
+      ],
+      deviceInstances: [
+        { id: 'dev-1', typeId: 'battery_1', name: '<img>', host: 'x', port: 502, unitId: 1, interval: 999, assetTag: 'A1' },
+        { id: 'x] .owned', typeId: 'battery_1', interval: 1000 },
+        { id: 'dev2', typeId: 'bad"type', interval: 1000 },
+      ],
+    })
+    expect(result.types).toEqual([{ id: 'battery_1', name: '<安全文本>', points: [] }])
+    expect(result.instances).toEqual([
+      { id: 'dev-1', typeId: 'battery_1', name: '<img>', host: 'x', port: 502, unitId: 1, interval: 1000, assetTag: 'A1' },
+    ])
+    expect(result.warnings).toHaveLength(4)
+    expect(result.warnings.every(message => /已跳过|已重置/.test(message))).toBe(true)
+  })
+})
+
+describe('实例弹窗键盘与单选状态', () => {
+  function focusable(name, overrides = {}) {
+    return {
+      name,
+      disabled: false,
+      hidden: false,
+      tabIndex: 0,
+      closest: () => null,
+      focus() { active.current = this },
+      ...overrides,
+    }
+  }
+  const active = { current: null }
+
+  it('动态过滤 disabled、hidden、隐藏分组和负 tabindex 控件', () => {
+    const visible = focusable('visible')
+    const container = {
+      querySelectorAll: () => [
+        visible,
+        focusable('disabled', { disabled: true }),
+        focusable('hidden', { hidden: true }),
+        focusable('group-hidden', { closest: selector => selector === '.hidden, [aria-hidden="true"]' ? {} : null }),
+        focusable('negative', { tabIndex: -1 }),
+      ],
+    }
+    expect(getFocusable(container)).toEqual([visible])
+  })
+
+  it('Tab 从最后回到第一，Shift+Tab 从第一回到最后', () => {
+    const first = focusable('first')
+    const middle = focusable('middle')
+    const last = focusable('last')
+    const controls = [first, middle, last]
+    const controller = createDialogKeyController({
+      getControls: () => controls,
+      getActive: () => active.current,
+      onEscape: () => {},
+    })
+    const forward = { key: 'Tab', shiftKey: false, preventDefault() { this.prevented = true } }
+    active.current = last
+    controller.handle(forward)
+    expect(active.current).toBe(first)
+    expect(forward.prevented).toBe(true)
+
+    const backward = { key: 'Tab', shiftKey: true, preventDefault() { this.prevented = true } }
+    active.current = first
+    controller.handle(backward)
+    expect(active.current).toBe(last)
+    expect(backward.prevented).toBe(true)
+  })
+
+  it('中间 Tab 不拦截，Escape 交给关闭策略', () => {
+    const controls = [focusable('first'), focusable('middle'), focusable('last')]
+    let escapes = 0
+    const controller = createDialogKeyController({
+      getControls: () => controls,
+      getActive: () => active.current,
+      onEscape: () => { escapes++ },
+    })
+    active.current = controls[1]
+    const tab = { key: 'Tab', shiftKey: false, preventDefault() { this.prevented = true } }
+    controller.handle(tab)
+    expect(tab.prevented).toBeUndefined()
+    controller.handle({ key: 'Escape', preventDefault() { this.prevented = true } })
+    expect(escapes).toBe(1)
+  })
+
+  it('图标单选同步 active、aria-checked 和 roving tabindex', () => {
+    const options = Array.from({ length: 3 }, () => ({
+      tabIndex: -1,
+      attrs: {},
+      classList: { active: false, toggle(_name, value) { this.active = value } },
+      setAttribute(name, value) { this.attrs[name] = value },
+    }))
+    applyRadioSelection(options, 1)
+    expect(options.map(option => option.classList.active)).toEqual([false, true, false])
+    expect(options.map(option => option.attrs['aria-checked'])).toEqual(['false', 'true', 'false'])
+    expect(options.map(option => option.tabIndex)).toEqual([-1, 0, -1])
+  })
 })
 
 describe('设备页面 RTU 静态契约', () => {
@@ -190,6 +364,34 @@ describe('设备页面 RTU 静态契约', () => {
     expect(deviceJs).toContain('DeviceConfig.deleteInstanceSafely')
     expect(deviceJs).toContain('window.api.deviceStop')
     expect(deviceJs).not.toContain('_appStopInstance')
+  })
+
+  it('不把后端实例 id 直接拼入 querySelector，并对属性值转义', () => {
+    expect(deviceJs).not.toMatch(/querySelector\(`[^`]*\$\{s\.id\}/)
+    expect(deviceJs).toContain('escapeAttr')
+  })
+
+  it('实例变更以候选列表持久化成功后再更新 state', () => {
+    expect(deviceJs).toContain('DeviceConfig.commitInstanceList')
+    expect(deviceJs).toContain('nextInstances')
+  })
+
+  it('实例弹窗具备对话框语义、字段标签和 Escape/焦点管理', () => {
+    expect(html).toMatch(/id="instanceModal"[^>]*role="dialog"[^>]*aria-modal="true"[^>]*aria-labelledby="instModalTitle"/)
+    for (const id of ['instName', 'instTypeSel', 'instTransport', 'instHost', 'instPort', 'instSerialPath', 'instBaudRate', 'instDataBits', 'instParity', 'instStopBits', 'instUnitId', 'instTimeout', 'instInterval']) {
+      expect(html).toContain(`for="${id}"`)
+    }
+    expect(deviceJs).toContain("event.key === 'Escape'")
+    expect(deviceJs).toContain('instancePreviousFocus')
+    expect(deviceJs).toContain('createDialogKeyController')
+    expect(deviceJs).toContain("removeEventListener('keydown'")
+  })
+
+  it('图标选择器使用可聚焦 radio button 和 roving tabindex', () => {
+    expect(html).toMatch(/id="iconSelector"[^>]*role="radiogroup"[^>]*aria-label="设备图标"/)
+    expect(deviceJs).toContain("document.createElement('button')")
+    expect(deviceJs).toContain("button.setAttribute('role', 'radio')")
+    expect(deviceJs).toContain('DeviceConfig.applyRadioSelection')
   })
 
   it('实例保存后会刷新设备调试下拉', () => {

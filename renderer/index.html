@@ -254,32 +254,32 @@
   </div>
 
   <!-- 实例管理弹窗 -->
-  <div id="instanceModal" class="overlay hidden">
+  <div id="instanceModal" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="instModalTitle">
     <div class="modal-box" style="width:520px;max-width:92vw">
       <h3 id="instModalTitle">添加设备实例</h3>
       <div class="inst-form">
-        <div class="if-row"><span>实例名</span><input id="instName" placeholder="如 1号电池柜"></div>
-        <div class="if-row"><span>设备类型</span><select id="instTypeSel"></select></div>
+        <div class="if-row"><label for="instName">实例名</label><input id="instName" placeholder="如 1号电池柜"></div>
+        <div class="if-row"><label for="instTypeSel">设备类型</label><select id="instTypeSel"></select></div>
         <div class="if-row" style="align-items:flex-start"><span>设备图标</span>
-          <div id="iconSelector" style="display:flex;flex-wrap:wrap;gap:6px">
+          <div id="iconSelector" role="radiogroup" aria-label="设备图标" style="display:flex;flex-wrap:wrap;gap:6px">
             <!-- 由 JS 动态渲染 -->
           </div>
         </div>
-        <div class="if-row"><span>通信方式</span><select id="instTransport" aria-label="实例通信方式"><option value="tcp">TCP</option><option value="rtu">RTU（USB/RS485）</option></select></div>
+        <div class="if-row"><label for="instTransport">通信方式</label><select id="instTransport" aria-label="实例通信方式"><option value="tcp">TCP</option><option value="rtu">RTU（USB/RS485）</option></select></div>
         <div id="instTcpFields" class="inst-connection-fields">
-          <div class="if-row"><span>IP</span><input id="instHost" placeholder="192.168.1.10"></div>
-          <div class="if-row"><span>端口</span><input id="instPort" type="number" value="502" min="1" max="65535"></div>
+          <div class="if-row"><label for="instHost">IP</label><input id="instHost" placeholder="192.168.1.10"></div>
+          <div class="if-row"><label for="instPort">端口</label><input id="instPort" type="number" value="502" min="1" max="65535"></div>
         </div>
         <div id="instRtuFields" class="inst-connection-fields hidden" aria-hidden="true">
-          <div class="if-row"><span>串口</span><div class="inst-serial-control"><select id="instSerialPath" disabled aria-label="实例串口"><option value="">请选择串口</option></select><button id="instRefreshSerialBtn" class="btn ghost sm" type="button" disabled>刷新</button></div></div>
-          <div class="if-row"><span>波特率</span><input id="instBaudRate" type="number" min="110" max="4000000" value="9600" disabled></div>
-          <div class="if-row"><span>数据位</span><select id="instDataBits" disabled><option value="7">7</option><option value="8" selected>8</option></select></div>
-          <div class="if-row"><span>校验位</span><select id="instParity" disabled><option value="none" selected>无（N）</option><option value="even">偶（E）</option><option value="odd">奇（O）</option></select></div>
-          <div class="if-row"><span>停止位</span><select id="instStopBits" disabled><option value="1" selected>1</option><option value="2">2</option></select></div>
+          <div class="if-row"><label for="instSerialPath">串口</label><div class="inst-serial-control"><select id="instSerialPath" disabled aria-label="实例串口"><option value="">请选择串口</option></select><button id="instRefreshSerialBtn" class="btn ghost sm" type="button" disabled aria-label="刷新实例串口列表" aria-live="polite">刷新</button></div></div>
+          <div class="if-row"><label for="instBaudRate">波特率</label><input id="instBaudRate" type="number" min="110" max="4000000" value="9600" disabled></div>
+          <div class="if-row"><label for="instDataBits">数据位</label><select id="instDataBits" disabled><option value="7">7</option><option value="8" selected>8</option></select></div>
+          <div class="if-row"><label for="instParity">校验位</label><select id="instParity" disabled><option value="none" selected>无（N）</option><option value="even">偶（E）</option><option value="odd">奇（O）</option></select></div>
+          <div class="if-row"><label for="instStopBits">停止位</label><select id="instStopBits" disabled><option value="1" selected>1</option><option value="2">2</option></select></div>
         </div>
-        <div class="if-row"><span>从站ID</span><input id="instUnitId" type="number" value="1"></div>
-        <div class="if-row"><span>超时</span><input id="instTimeout" type="number" min="100" max="60000" value="2000"><small>ms</small></div>
-        <div class="if-row"><span>周期</span>
+        <div class="if-row"><label for="instUnitId">从站ID</label><input id="instUnitId" type="number" value="1"></div>
+        <div class="if-row"><label for="instTimeout">超时</label><input id="instTimeout" type="number" min="100" max="60000" value="2000"><small>ms</small></div>
+        <div class="if-row"><label for="instInterval">周期</label>
           <select id="instInterval">
             <option value="100">100ms</option>
             <option value="500">500ms</option>
