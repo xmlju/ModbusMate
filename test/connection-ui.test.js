@@ -11,6 +11,7 @@ const {
   mergeConnectionIntoConfig,
   createSerialPortLoader,
   createExclusiveRunner,
+  serialPortLabel,
 } = require('../renderer/connection-ui.js')
 
 describe('工作台连接配置纯函数', () => {
@@ -161,6 +162,13 @@ describe('工作台连接配置纯函数', () => {
     ])
     expect(result[0].manufacturer).toBe(manufacturer)
     expect(JSON.stringify(result)).not.toContain('<option')
+  })
+
+  it('串口标签保留恶意文本为普通字符串，供 DOM textContent 安全显示', () => {
+    const malicious = '<img src=x onerror=alert(1)>'
+    expect(serialPortLabel({ path: 'COM3', manufacturer: malicious, vendorId: '10C4', productId: 'EA60' }))
+      .toBe(`COM3 · ${malicious} · VID 10C4 · PID EA60`)
+    expect(serialPortLabel({ path: 'COM9', unavailable: true })).toBe('COM9（当前不可用）')
   })
 
   it('保存连接参数时保留监控、主题、类型和实例配置', () => {

@@ -1,12 +1,12 @@
 // renderer/device.js — 设备模式：类型/实例管理 + 设备总览分组仪表盘 + 设备调试点位表
-// 依赖全局 Codec、ReadPlan、window.api；在 app.js 前加载
+// 依赖全局 Codec、ReadPlan、ConnectionUI、DeviceConfig、window.api；在 app.js 前加载
 const DeviceUI = (() => {
   const $ = id => document.getElementById(id)
 
   // ── 数据状态 ──
   const state = {
     types: [],        // [{ id, name, points: [...] }]
-    instances: [],    // [{ id, typeId, name, host, port, unitId, interval, iconIdx }]
+    instances: [],    // [{ id, typeId, name, transport, ...连接参数, interval, iconIdx }]
     running: {},      // id → true/false
     data: {},         // id → blocks（最新采集数据）
     statuses: {},     // id → 'connected'|'offline'|'disconnected'|'error'
@@ -43,13 +43,11 @@ const DeviceUI = (() => {
 
   function buildInstanceCfg(inst) {
     const type = state.types.find(t => t.id === inst.typeId)
-    if (!type) return null
-    return {
-      host: inst.host, port: inst.port, unitId: inst.unitId, interval: inst.interval,
-      blocks: ReadPlan.buildReadPlan(
-        type.points.map(p => ({ area: p.area, addr: p.addr, words: getWords(p.area, p.type) }))
-      ),
-    }
+    return DeviceConfig.buildDeviceConfig(inst, type, ReadPlan.buildReadPlan)
+  }
+
+  function formatConnectionTarget(inst) {
+    return ConnectionUI.formatConnectionTarget(inst)
   }
 
   function loadFromConfig(cfg) {
@@ -126,12 +124,12 @@ const DeviceUI = (() => {
       await window.api.deviceStart({ id, cfg })
       state.running[id] = true; state.statuses[id] = 'connected'
       renderOverviewPage(); renderMgrPage()
-      log('info', `设备「${inst.name}」已启动（${inst.host}:${inst.port}）`)
+      log('info', `设备「${inst.name}」已启动（${formatConnectionTarget(inst)}）`)
     } catch (err) {
       state.running[id] = false; state.statuses[id] = 'error'
       renderOverviewPage(); renderMgrPage()
       const msg = String(err.message || err).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
-      log('error', `设备「${inst.name}」启动失败：${msg}`)
+      log('error', `设备「${inst.name}」启动失败（${formatConnectionTarget(inst)}）：${msg}`)
     }
   }
 
@@ -190,7 +188,7 @@ const DeviceUI = (() => {
           <span class="collapse-toggle" data-inst-id="${inst.id}">▾</span>
           ${thumbHtml}
           <span class="dev-name">${escapeHtml(inst.name)}</span>
-          <span class="dev-meta">${escapeHtml(inst.host)}:${inst.port} · 从站${inst.unitId} · 周期 ${inst.interval}ms</span>
+          <span class="dev-meta">${escapeHtml(formatConnectionTarget(inst))} · 周期 ${inst.interval}ms</span>
           <span class="pill"><span class="dot ${statusDot}"></span>${statusText}</span>
           <button class="btn ghost sm dev-toggle-ov" data-id="${inst.id}">${running ? '⏸ 停止' : '▶ 启动'}</button>
         </div>
@@ -290,7 +288,7 @@ const DeviceUI = (() => {
           return `<div class="mgr-row">
             <span class="dot ${dotCls}"></span>
             <span class="mgr-name">${escapeHtml(inst.name)}</span>
-            <span class="mgr-meta">${type ? escapeHtml(type.name) : '（未知）'} · ${escapeHtml(inst.host)}:${inst.port} · ${running ? '运行中' : '已停止'}</span>
+            <span class="mgr-meta">${type ? escapeHtml(type.name) : '（未知）'} · ${escapeHtml(formatConnectionTarget(inst))} · ${running ? '运行中' : '已停止'}</span>
             <button class="btn ghost sm mgr-toggle-inst" data-id="${inst.id}">${running ? '停止' : '启动'}</button>
             <button class="btn ghost sm mgr-edit-inst" data-id="${inst.id}">编辑</button>
             <button class="btn ghost sm mgr-del-inst" style="border-color:var(--status-critical);color:var(--status-critical)" data-id="${inst.id}">删除</button>
@@ -319,13 +317,13 @@ const DeviceUI = (() => {
     try {
       const inst = state.instances.find(i => i.id === id)
       if (!inst) { alert(`未找到实例 (${id})，请刷新页面重试`); return }
-      if (state.running[id]) { alert('请先停止设备再删除'); return }
       if (!confirm(`确定删除实例「${inst.name}」？`)) return
-      // 如有设备管理器实例，停止轮询
-      if (window._appStopInstance) window._appStopInstance(id)
-      state.instances = state.instances.filter(i => i.id !== id)
-      delete state.running[id]; delete state.statuses[id]; delete state.data[id]
-      await saveToConfig(); renderMgrPage(); renderOverviewPage()
+      // 页面刷新后 running 状态可能为空，仍必须让后端幂等停止该实例。
+      await DeviceConfig.deleteInstanceSafely(id, window.api.deviceStop, async () => {
+        state.instances = state.instances.filter(i => i.id !== id)
+        delete state.running[id]; delete state.statuses[id]; delete state.data[id]
+        await saveToConfig(); renderMgrPage(); renderOverviewPage()
+      })
     } catch (e) {
       console.error('deleteInstance 异常', e)
       alert('删除失败: ' + (e.message || e))
@@ -457,69 +455,168 @@ const DeviceUI = (() => {
   }
 
   // ── 实例管理弹窗 ──
-  function openInstanceModal() {
-    if (state.types.length === 0) { log('error', '请先创建设备类型'); return }
-    const overlay = $('instanceModal'); overlay.classList.remove('hidden')
-    const sel = $('instTypeSel')
-    sel.innerHTML = state.types.map(t => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join('')
-    $('instName').value = ''; $('instHost').value = '192.168.1.'
-    $('instPort').value = 502; $('instUnitId').value = 1; $('instInterval').value = 1000
-    $('instModalError').textContent = ''
-    $('instModalTitle').textContent = '添加设备实例'
-    // 渲染图标选择器（默认选中电池柜）
-    renderIconSelector(0)
-    $('instModalOk').onclick = async () => {
-      const name = $('instName').value.trim(); const host = $('instHost').value.trim()
-      const port = Number($('instPort').value); const unitId = Number($('instUnitId').value)
-      const interval = Number($('instInterval').value); const typeId = $('instTypeSel').value
-      if (!name) { $('instModalError').textContent = '请输入实例名称'; return }
-      if (!host) { $('instModalError').textContent = '请输入设备 IP'; return }
-      if (!Number.isInteger(port) || port < 1 || port > 65535) { $('instModalError').textContent = '端口范围 1~65535'; return }
-      if (!Number.isInteger(unitId) || unitId < 0 || unitId > 255) { $('instModalError').textContent = '从站 ID 范围 0~255'; return }
-      if (![100, 500, 1000, 2000, 5000, 10000, 15000].includes(interval)) { $('instModalError').textContent = '周期值无效'; return }
-      state.instances.push({ id: genId(), typeId, name, host, port, unitId, interval, iconIdx: getSelectedIconIdx() })
-      await saveToConfig(); closeInstanceModal(); renderMgrPage(); renderOverviewPage()
-      log('info', `已添加设备实例「${name}」`)
-      // 跳转到管理页让用户看到实例
-      window.switchNav('mgr')
-      // 刷新设备调试下拉
-      if (window.populateDeviceDebugSel) window.populateDeviceDebugSel()
+  const instanceSerialLoader = ConnectionUI.createSerialPortLoader(() => window.api.listSerialPorts())
+  const instanceModalGuard = DeviceConfig.createSessionGuard()
+  let instanceModalSession = null
+
+  function updateInstanceConnectionFields(transport, autoRefresh = false) {
+    const normalized = ConnectionUI.normalizeTransport(transport)
+    const isRtu = normalized === 'rtu'
+    $('instTransport').value = normalized
+    $('instTcpFields').classList.toggle('hidden', isRtu)
+    $('instTcpFields').setAttribute('aria-hidden', String(isRtu))
+    $('instTcpFields').querySelectorAll('input, select, button').forEach(control => { control.disabled = isRtu })
+    $('instRtuFields').classList.toggle('hidden', !isRtu)
+    $('instRtuFields').setAttribute('aria-hidden', String(!isRtu))
+    $('instRtuFields').querySelectorAll('input, select, button').forEach(control => { control.disabled = !isRtu })
+    $('instUnitId').min = isRtu ? '1' : '0'
+    $('instUnitId').max = isRtu ? '247' : '255'
+    if (isRtu && autoRefresh) refreshInstanceSerialPorts(instanceModalSession)
+  }
+
+  function renderInstanceSerialPorts(ports) {
+    const select = $('instSerialPath')
+    const current = select.value
+    const options = ConnectionUI.mergeSerialPortOptions(current, ports)
+    select.replaceChildren()
+    if (!options.length) {
+      const placeholder = document.createElement('option')
+      placeholder.value = ''
+      placeholder.textContent = '未发现串口，请连接 USB/RS485 设备后刷新'
+      select.appendChild(placeholder)
+      return
+    }
+    options.forEach(port => {
+      const option = document.createElement('option')
+      option.value = port.path
+      option.textContent = ConnectionUI.serialPortLabel(port)
+      select.appendChild(option)
+    })
+    if (options.some(port => port.path === current)) select.value = current
+  }
+
+  async function refreshInstanceSerialPorts(session = instanceModalSession) {
+    const button = $('instRefreshSerialBtn')
+    button.disabled = true
+    button.textContent = '刷新中…'
+    try {
+      const ports = await instanceSerialLoader.load()
+      if (!instanceModalGuard.isCurrent(session) || $('instanceModal').classList.contains('hidden') || $('instTransport').value !== 'rtu') return ports
+      renderInstanceSerialPorts(ports)
+      $('instModalError').textContent = ''
+      return ports
+    } catch (error) {
+      if (instanceModalGuard.isCurrent(session) && !$('instanceModal').classList.contains('hidden')) {
+        const message = String(error.message || error).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
+        $('instModalError').textContent = `刷新串口失败：${message}；请检查 USB/RS485 转换器、驱动和系统串口权限`
+      }
+      return null
+    } finally {
+      if (instanceModalGuard.isCurrent(session)) {
+        button.textContent = '刷新'
+        button.disabled = $('instTransport').value !== 'rtu'
+      }
     }
   }
 
-  function closeInstanceModal() { $('instanceModal').classList.add('hidden') }
+  function readInstanceFormValues() {
+    return {
+      typeId: $('instTypeSel').value,
+      name: $('instName').value,
+      iconIdx: getSelectedIconIdx(),
+      interval: $('instInterval').value,
+      transport: $('instTransport').value,
+      host: $('instHost').value,
+      port: $('instPort').value,
+      serialPath: $('instSerialPath').value,
+      baudRate: $('instBaudRate').value,
+      dataBits: $('instDataBits').value,
+      parity: $('instParity').value,
+      stopBits: $('instStopBits').value,
+      unitId: $('instUnitId').value,
+      timeout: $('instTimeout').value,
+    }
+  }
+
+  function configureInstanceModal(existing) {
+    instanceModalSession = instanceModalGuard.begin()
+    $('instanceModal').classList.remove('hidden')
+    $('instTypeSel').innerHTML = state.types.map(t => `<option value="${t.id}" ${existing?.typeId === t.id ? 'selected' : ''}>${escapeHtml(t.name)}</option>`).join('')
+    const view = DeviceConfig.normalizeInstanceView(existing || {
+      transport: 'tcp', host: '192.168.1.', port: 502, unitId: 1, timeout: 2000,
+    })
+    $('instName').value = existing?.name || ''
+    $('instTransport').value = view.transport
+    $('instHost').value = view.host || '192.168.1.'
+    $('instPort').value = view.port
+    $('instBaudRate').value = view.baudRate
+    $('instDataBits').value = view.dataBits
+    $('instParity').value = view.parity
+    $('instStopBits').value = view.stopBits
+    $('instUnitId').value = view.unitId
+    $('instTimeout').value = view.timeout
+    $('instInterval').value = existing?.interval || 1000
+    $('instModalError').textContent = ''
+    $('instModalTitle').textContent = existing ? '编辑设备实例' : '添加设备实例'
+    renderIconSelector(existing?.iconIdx != null ? existing.iconIdx : 0)
+
+    const serialSelect = $('instSerialPath')
+    serialSelect.replaceChildren()
+    const serialOption = document.createElement('option')
+    serialOption.value = view.serialPath
+    serialOption.textContent = view.serialPath ? `${view.serialPath}（当前不可用）` : '请选择串口'
+    serialSelect.appendChild(serialOption)
+    serialSelect.value = view.serialPath
+    updateInstanceConnectionFields(view.transport)
+
+    $('instTransport').onchange = () => {
+      instanceModalGuard.invalidate()
+      instanceModalSession = instanceModalGuard.begin()
+      updateInstanceConnectionFields($('instTransport').value, true)
+    }
+    $('instRefreshSerialBtn').onclick = () => refreshInstanceSerialPorts(instanceModalSession)
+    if (view.transport === 'rtu') refreshInstanceSerialPorts(instanceModalSession)
+
+    $('instModalOk').onclick = async () => {
+      try {
+        if (existing) DeviceConfig.assertInstanceEditable(state.running[existing.id])
+        const record = DeviceConfig.buildInstanceRecord(existing || { id: genId() }, readInstanceFormValues())
+        if (existing) {
+          const index = state.instances.findIndex(inst => inst.id === existing.id)
+          if (index < 0) throw new Error('未找到实例，请刷新页面后重试')
+          state.instances[index] = record
+        } else {
+          state.instances.push(record)
+        }
+        await saveToConfig(); closeInstanceModal(); renderMgrPage(); renderOverviewPage()
+        log('info', `${existing ? '已更新' : '已添加'}设备实例「${record.name}」（${formatConnectionTarget(record)}）`)
+        if (!existing) window.switchNav('mgr')
+        if (window.populateDeviceDebugSel) window.populateDeviceDebugSel()
+      } catch (error) {
+        $('instModalError').textContent = error.message || String(error)
+      }
+    }
+  }
+
+  function openInstanceModal() {
+    if (state.types.length === 0) { log('error', '请先创建设备类型'); return }
+    configureInstanceModal(null)
+  }
+
+  function closeInstanceModal() {
+    instanceModalGuard.invalidate()
+    instanceModalSession = null
+    $('instRefreshSerialBtn').textContent = '刷新'
+    $('instanceModal').classList.add('hidden')
+    $('instModalError').textContent = ''
+  }
 
   // ── 编辑实例（复用弹窗） ──
   function editInstance(id) {
     const inst = state.instances.find(i => i.id === id)
     if (!inst) { alert('未找到实例'); return }
     if (state.running[id]) { alert('请先停止设备再编辑'); return }
-    const overlay = $('instanceModal'); overlay.classList.remove('hidden')
-    const sel = $('instTypeSel')
-    sel.innerHTML = state.types.map(t => `<option value="${t.id}" ${t.id === inst.typeId ? 'selected' : ''}>${escapeHtml(t.name)}</option>`).join('')
-    $('instName').value = inst.name
-    $('instHost').value = inst.host
-    $('instPort').value = inst.port
-    $('instUnitId').value = inst.unitId
-    $('instInterval').value = inst.interval
-    $('instModalError').textContent = ''
-    $('instModalTitle').textContent = '编辑设备实例'
-    // 图标选择器（选中当前图标）
-    renderIconSelector(inst.iconIdx != null ? inst.iconIdx : 0)
-    $('instModalOk').onclick = async () => {
-      const name = $('instName').value.trim(); const host = $('instHost').value.trim()
-      const port = Number($('instPort').value); const unitId = Number($('instUnitId').value)
-      const interval = Number($('instInterval').value); const typeId = $('instTypeSel').value
-      if (!name) { $('instModalError').textContent = '请输入实例名称'; return }
-      if (!host) { $('instModalError').textContent = '请输入设备 IP'; return }
-      if (!Number.isInteger(port) || port < 1 || port > 65535) { $('instModalError').textContent = '端口范围 1~65535'; return }
-      if (!Number.isInteger(unitId) || unitId < 0 || unitId > 255) { $('instModalError').textContent = '从站 ID 范围 0~255'; return }
-      if (![100, 500, 1000, 2000, 5000, 10000, 15000].includes(interval)) { $('instModalError').textContent = '周期值无效'; return }
-      Object.assign(inst, { typeId, name, host, port, unitId, interval, iconIdx: getSelectedIconIdx() })
-      await saveToConfig(); closeInstanceModal(); renderMgrPage(); renderOverviewPage()
-      log('info', `已更新设备实例「${name}」`)
-      if (window.populateDeviceDebugSel) window.populateDeviceDebugSel()
-    }
+    configureInstanceModal(inst)
   }
 
   // ── 初始化（IPC 监听）──
@@ -545,6 +642,7 @@ const DeviceUI = (() => {
     renderInstanceCards,
     renderMgrPage,
     openInstanceModal,
+    closeInstanceModal,
     openTypeEditor,
     openTypeEditorForNew,
   }

@@ -238,6 +238,10 @@ td select { padding: 2px 4px; margin-right: 4px; background: var(--surface-2); c
 .inst-form .if-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
 .inst-form .if-row > span { width: 64px; flex-shrink: 0; font-size: 13px; color: var(--ink-2); text-align: right; }
 .inst-form .if-row > input, .inst-form .if-row > select { flex: 1; padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-2); color: var(--ink-1); min-width: 0; }
+.inst-form .if-row > small { color: var(--ink-3); }
+.inst-connection-fields { display: contents; }
+.inst-serial-control { display: flex; gap: 6px; flex: 1; min-width: 0; }
+.inst-serial-control select { flex: 1; min-width: 0; padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-2); color: var(--ink-1); }
 
 /* ── 类型管理行 ── */
 #typeList { max-height: 300px; overflow-y: auto; margin: 10px 0; }

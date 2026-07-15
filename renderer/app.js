@@ -117,7 +117,7 @@ async function startApp() {
     $('typeEditorModal').classList.add('hidden')
   })
   $('instModalCancel').addEventListener('click', () => {
-    $('instanceModal').classList.add('hidden')
+    DeviceUI.closeInstanceModal()
   })
 
   // 初始渲染
@@ -152,16 +152,6 @@ function updateConnectionFields(transport, autoRefresh = false) {
   if (isRtu && autoRefresh && !serialPortLoader.isLoading()) refreshSerialPorts()
 }
 
-function serialPortLabel(port) {
-  const details = [
-    port.manufacturer,
-    port.vendorId ? `VID ${port.vendorId}` : '',
-    port.productId ? `PID ${port.productId}` : '',
-  ].filter(Boolean)
-  const suffix = port.unavailable ? '（当前不可用）' : details.length ? ` · ${details.join(' · ')}` : ''
-  return `${port.path}${suffix}`
-}
-
 function renderSerialPorts(ports) {
   const select = $('serialPath')
   const current = select.value
@@ -177,7 +167,7 @@ function renderSerialPorts(ports) {
   options.forEach(port => {
     const option = document.createElement('option')
     option.value = port.path
-    option.textContent = serialPortLabel(port)
+    option.textContent = ConnectionUI.serialPortLabel(port)
     select.appendChild(option)
   })
   if (options.some(port => port.path === current)) select.value = current
@@ -268,12 +258,20 @@ function updateOnlineOfflinePills() {
 function populateDeviceDebugSel() {
   const sel = $('ddDeviceSel')
   const curVal = sel.value
-  sel.innerHTML = '<option value="">— 选择设备 —</option>'
+  sel.replaceChildren()
+  const placeholder = document.createElement('option')
+  placeholder.value = ''
+  placeholder.textContent = '— 选择设备 —'
+  sel.appendChild(placeholder)
   DeviceUI.state.instances.forEach(inst => {
-    sel.innerHTML += `<option value="${inst.id}">${inst.name} (${inst.host}:${inst.port})</option>`
+    const option = document.createElement('option')
+    option.value = inst.id
+    option.textContent = `${inst.name}（${ConnectionUI.formatConnectionTarget(inst)}）`
+    sel.appendChild(option)
   })
   if (curVal && [...sel.options].some(o => o.value === curVal)) sel.value = curVal
 }
+window.populateDeviceDebugSel = populateDeviceDebugSel
 
 function renderDebugForDevice(id) {
   const ddContent = $('ddContent')
@@ -298,7 +296,7 @@ function renderDebugForDevice(id) {
   ddStatus.innerHTML = running
     ? `<span class="dot ${status}"></span>${status === 'connected' ? '在线' : status === 'offline' ? '离线·重连中' : '连接中'}`
     : `<span class="dot idle"></span>未启动`
-  ddMeta.textContent = `${inst.host}:${inst.port} · 从站${inst.unitId} · 周期 ${inst.interval}ms`
+  ddMeta.textContent = `${ConnectionUI.formatConnectionTarget(inst)} · 周期 ${inst.interval}ms`
   ddToggleBtn.style.display = 'block'
   ddToggleBtn.textContent = running ? '⏸ 停止' : '▶ 启动'
 

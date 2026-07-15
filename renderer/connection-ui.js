@@ -134,6 +134,17 @@ const ConnectionUI = (() => {
     return result
   }
 
+  function serialPortLabel(port = {}) {
+    const path = safeText(port.path)
+    if (port.unavailable) return `${path}（当前不可用）`
+    const details = [
+      safeText(port.manufacturer),
+      port.vendorId ? `VID ${safeText(port.vendorId)}` : '',
+      port.productId ? `PID ${safeText(port.productId)}` : '',
+    ].filter(Boolean)
+    return details.length ? `${path} · ${details.join(' · ')}` : path
+  }
+
   function mergeConnectionIntoConfig(existing, connection) {
     return { ...(existing || {}), ...(connection || {}) }
   }
@@ -178,6 +189,7 @@ const ConnectionUI = (() => {
     buildConnectionConfig,
     formatConnectionTarget,
     mergeSerialPortOptions,
+    serialPortLabel,
     mergeConnectionIntoConfig,
     createSerialPortLoader,
     createExclusiveRunner,
