@@ -4,7 +4,7 @@ import Codec from '../renderer/codec.js'
 const { validatePoints } = Codec
 
 // 合法点位样板
-const good = { name: '输出电压', area: 'holding', addr: 4, type: 'uint16', wordOrder: 'AB', k: 0.1, b: 0, decimals: 1, unit: 'V' }
+const good = { name: '输出电压', area: 'holding', addr: 4, type: 'uint16', wordOrder: 'AB', k: 0.1, b: 0, decimals: 1, unit: 'V', visible: true }
 
 describe('validatePoints — 导入点表校验', () => {
   it('schema 包装的完整对象通过校验', () => {
@@ -68,7 +68,7 @@ describe('validatePoints — 导入点表校验', () => {
   it('缺省字段补默认值：k=1 b=0 decimals=null unit 空串', () => {
     const r = validatePoints([{ name: 'SOC', area: 'holding', addr: 7, type: 'uint16' }])
     expect(r.ok).toBe(true)
-    expect(r.points[0]).toEqual({ name: 'SOC', area: 'holding', addr: 7, type: 'uint16', wordOrder: 'AB', k: 1, b: 0, decimals: null, unit: '' })
+    expect(r.points[0]).toEqual({ name: 'SOC', area: 'holding', addr: 7, type: 'uint16', wordOrder: 'AB', k: 1, b: 0, decimals: null, unit: '', visible: true })
   })
 
   it('decimals 为空串或 null 时规范为 null', () => {
@@ -86,5 +86,20 @@ describe('validatePoints — 导入点表校验', () => {
     const r = validatePoints([good, null])
     expect(r.error).toContain('第 2 个点位')
     expect(r.error).toContain('格式错误')
+  })
+
+  it('visible 缺省时视为 true', () => {
+    const r = validatePoints([{ name: 'A', area: 'holding', addr: 0, type: 'uint16' }])
+    expect(r.points[0].visible).toBe(true)
+  })
+
+  it('visible: false 保留为 false', () => {
+    const r = validatePoints([{ ...good, visible: false }])
+    expect(r.points[0].visible).toBe(false)
+  })
+
+  it('visible: true 保留为 true', () => {
+    const r = validatePoints([{ ...good, visible: true }])
+    expect(r.points[0].visible).toBe(true)
   })
 })

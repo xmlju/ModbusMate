@@ -33,7 +33,7 @@ async function startApp() {
     $('serialPath').appendChild(currentPort)
     $('serialPath').value = connectionView.serialPath
   }
-  $('baudRate').value = connectionView.baudRate
+  $('baudRate').value = String(connectionView.baudRate || 9600)
   $('dataBits').value = connectionView.dataBits
   $('parity').value = connectionView.parity
   $('stopBits').value = connectionView.stopBits
@@ -55,10 +55,12 @@ async function startApp() {
   $('logToggle').addEventListener('click', () => $('logPanel').classList.toggle('collapsed'))
   $('modalCancel').addEventListener('click', closeModal)
   $('modalOk').addEventListener('click', confirmWrite)
+  $('writeModalClose').addEventListener('click', closeModal)
   $('viewBtn').addEventListener('click', toggleView)
   $('tfCancel').addEventListener('click', closeTransformModal)
   $('tfOk').addEventListener('click', saveTransform)
   $('tfClear').addEventListener('click', clearTransform)
+  $('transformModalClose').addEventListener('click', closeTransformModal)
 
   window.api.onData(onData)
   window.api.onStatus(st => onStatus(st))
@@ -116,7 +118,13 @@ async function startApp() {
   $('typeCancelBtn').addEventListener('click', () => {
     $('typeEditorModal').classList.add('hidden')
   })
+  $('typeEditorClose').addEventListener('click', () => {
+    $('typeEditorModal').classList.add('hidden')
+  })
   $('instModalCancel').addEventListener('click', () => {
+    DeviceUI.closeInstanceModal()
+  })
+  $('instanceModalClose').addEventListener('click', () => {
     DeviceUI.closeInstanceModal()
   })
 
@@ -315,6 +323,7 @@ function renderDebugForDevice(id) {
     tableHtml += '<tr><td colspan="7" style="text-align:center;color:var(--ink-3)">该类型无点位</td></tr>'
   } else {
     type.points.forEach((p, idx) => {
+      if (p.visible === false) return
       const slice = blocks ? ReadPlan.pickValues(blocks, { area: p.area, addr: p.addr, words: DeviceUI.getWords(p.area, p.type) }) : null
       const dispAddr = Codec.toPlcAddress(p.addr, p.area)
       const areaLabel = { holding: '保持寄存器', input: '输入寄存器', coil: '线圈', discrete: '离散输入' }[p.area] || p.area

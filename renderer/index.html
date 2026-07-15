@@ -90,7 +90,15 @@
             </label>
             <button id="refreshSerialBtn" class="btn ghost sm" type="button" disabled aria-label="刷新串口列表">刷新串口</button>
             <label>波特率
-              <input id="baudRate" type="number" min="110" max="4000000" step="1" value="9600" disabled>
+              <select id="baudRate" disabled>
+                <option value="2400">2400</option>
+                <option value="4800">4800</option>
+                <option value="9600" selected>9600</option>
+                <option value="19200">19200</option>
+                <option value="38400">38400</option>
+                <option value="57600">57600</option>
+                <option value="115200">115200</option>
+              </select>
             </label>
             <label>数据位 <select id="dataBits" disabled><option value="7">7</option><option value="8" selected>8</option></select></label>
             <label>校验 <select id="parity" disabled><option value="none" selected>无</option><option value="even">偶</option><option value="odd">奇</option></select></label>
@@ -194,6 +202,7 @@
   <!-- 写入弹窗 -->
   <div id="writeModal" class="overlay hidden">
     <div class="modal-box">
+      <button class="modal-close" id="writeModalClose" aria-label="关闭">×</button>
       <h3 id="modalTitle"></h3>
       <p id="modalHint" class="hint"></p>
       <input id="modalInput" autocomplete="off">
@@ -208,6 +217,7 @@
   <!-- 行设置弹窗（名称 + 公式） -->
   <div id="transformModal" class="overlay hidden">
     <div class="modal-box" style="width:420px">
+      <button class="modal-close" id="transformModalClose" aria-label="关闭">×</button>
       <h3 id="tfTitle"></h3>
       <p class="hint">显示值 = k × 解析值 + b；填写名称后该行进入仪表盘</p>
       <div class="tf-grid">
@@ -229,6 +239,7 @@
   <!-- 类型点位编辑弹窗 -->
   <div id="typeEditorModal" class="overlay hidden">
     <div class="modal-box" style="width:960px;max-width:95vw">
+      <button class="modal-close" id="typeEditorClose" aria-label="关闭">×</button>
       <h3 id="typeEditorTitle"></h3>
       <div style="display:flex;gap:8px;margin:6px 0;justify-content:flex-start">
         <button id="importPointsBtn" class="btn ghost sm">⬆ 导入点表</button>
@@ -237,9 +248,13 @@
       <div style="margin:10px 0;text-align:left">
         <label style="color:var(--ink-2);font-size:13px">类型名称 <input id="typeNameInput" style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface-2);color:var(--ink-1);margin-left:6px;width:200px"></label>
       </div>
+      <div class="type-editor-toolbar">
+        <input type="text" id="pointFilterInput" placeholder="按名称筛选点位" autocomplete="off">
+        <label><input type="checkbox" id="hexAddrCheck"> 16 进制地址</label>
+      </div>
       <div class="type-points-table-wrap">
         <table>
-          <thead><tr><th>名称</th><th>区域</th><th>地址</th><th>类型</th><th>字序</th><th>k</th><th>b</th><th>小数位</th><th>单位</th><th></th></tr></thead>
+          <thead><tr><th>名称</th><th>区域</th><th>地址</th><th>类型</th><th>字序</th><th>k <span class="kb-help" title="显示值 = k × 解析值 + b（系数）">?</span></th><th>b <span class="kb-help" title="显示值 = k × 解析值 + b（偏移）">?</span></th><th>小数位</th><th>单位</th><th>显示</th><th>操作</th></tr></thead>
           <tbody id="typePointsTbody"></tbody>
         </table>
       </div>
@@ -256,6 +271,7 @@
   <!-- 实例管理弹窗 -->
   <div id="instanceModal" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="instModalTitle">
     <div class="modal-box" style="width:520px;max-width:92vw">
+      <button class="modal-close" id="instanceModalClose" aria-label="关闭">×</button>
       <h3 id="instModalTitle">添加设备实例</h3>
       <div class="inst-form">
         <div class="if-row"><label for="instName">实例名</label><input id="instName" placeholder="如 1号电池柜"></div>
@@ -272,7 +288,15 @@
         </div>
         <div id="instRtuFields" class="inst-connection-fields hidden" aria-hidden="true">
           <div class="if-row"><label for="instSerialPath">串口</label><div class="inst-serial-control"><select id="instSerialPath" disabled aria-label="实例串口"><option value="">请选择串口</option></select><button id="instRefreshSerialBtn" class="btn ghost sm" type="button" disabled aria-label="刷新实例串口列表" aria-live="polite">刷新</button></div></div>
-          <div class="if-row"><label for="instBaudRate">波特率</label><input id="instBaudRate" type="number" min="110" max="4000000" value="9600" disabled></div>
+          <div class="if-row"><label for="instBaudRate">波特率</label><select id="instBaudRate" disabled>
+            <option value="2400">2400</option>
+            <option value="4800">4800</option>
+            <option value="9600" selected>9600</option>
+            <option value="19200">19200</option>
+            <option value="38400">38400</option>
+            <option value="57600">57600</option>
+            <option value="115200">115200</option>
+          </select></div>
           <div class="if-row"><label for="instDataBits">数据位</label><select id="instDataBits" disabled><option value="7">7</option><option value="8" selected>8</option></select></div>
           <div class="if-row"><label for="instParity">校验位</label><select id="instParity" disabled><option value="none" selected>无（N）</option><option value="even">偶（E）</option><option value="odd">奇（O）</option></select></div>
           <div class="if-row"><label for="instStopBits">停止位</label><select id="instStopBits" disabled><option value="1" selected>1</option><option value="2">2</option></select></div>

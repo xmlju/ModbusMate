@@ -131,7 +131,7 @@ const Codec = (() => {
         decimals = Number(p.decimals)
         if (!Number.isInteger(decimals) || decimals < 0 || decimals > 6) return { ok: false, error: `${row}「${name}」：小数位应为 0~6 的整数` }
       }
-      points.push({ name, area: p.area, addr, type: p.type, wordOrder: p.wordOrder === 'BA' ? 'BA' : 'AB', k, b, decimals, unit: String(p.unit ?? '').trim() })
+      points.push({ name, area: p.area, addr, type: p.type, wordOrder: p.wordOrder === 'BA' ? 'BA' : 'AB', k, b, decimals, unit: String(p.unit ?? '').trim(), visible: p.visible !== false })
     }
     return { ok: true, points }
   }

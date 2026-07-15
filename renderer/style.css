@@ -99,7 +99,8 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 #serialPath { width: 210px; max-width: 32vw; }
 #baudRate { width: 94px; }
 .connection-fields { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.connection-bar { row-gap: 8px; }
+.connection-bar { row-gap: 8px; align-items: flex-end; }
+.connection-bar > label { align-items: flex-end; min-width: 60px; }
 .right { margin-left: auto; }
 
 @media (max-width: 940px) {
@@ -219,7 +220,9 @@ td select { padding: 2px 4px; margin-right: 4px; background: var(--surface-2); c
 
 /* ── 遮罩与弹窗 ── */
 .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.65); display: flex; align-items: center; justify-content: center; z-index: 10; }
-.activation-box, .modal-box { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 28px 32px; width: 340px; text-align: center; }
+.activation-box, .modal-box { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 28px 32px; width: 340px; text-align: center; position: relative; }
+.modal-close { position: absolute; top: 8px; right: 12px; width: 28px; height: 28px; border: none; background: transparent; color: var(--ink-3); font-size: 18px; cursor: pointer; border-radius: 4px; display: flex; align-items: center; justify-content: center; padding: 0; }
+.modal-close:hover { background: var(--surface-2); color: var(--ink-1); }
 .modal-box input, .modal-box select { padding: 5px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-2); color: var(--ink-1); }
 .modal-box input { font-size: 16px; text-align: center; letter-spacing: 2px; }
 .modal-box .hint { color: var(--ink-3); margin-bottom: 14px; font-size: 12px; }
@@ -262,11 +265,22 @@ td select { padding: 2px 4px; margin-right: 4px; background: var(--surface-2); c
 .type-points-table-wrap th:nth-child(3), .type-points-table-wrap td:nth-child(3) { min-width: 80px; }   /* 地址 */
 .type-points-table-wrap th:nth-child(4), .type-points-table-wrap td:nth-child(4) { min-width: 90px; }   /* 类型 */
 .type-points-table-wrap th:nth-child(5), .type-points-table-wrap td:nth-child(5) { min-width: 64px; }   /* 字序 */
-.type-points-table-wrap th:nth-child(6), .type-points-table-wrap td:nth-child(6) { min-width: 70px; }   /* k */
-.type-points-table-wrap th:nth-child(7), .type-points-table-wrap td:nth-child(7) { min-width: 70px; }   /* b */
+.type-points-table-wrap th:nth-child(6), .type-points-table-wrap td:nth-child(6) { min-width: 50px; }   /* k */
+.type-points-table-wrap th:nth-child(7), .type-points-table-wrap td:nth-child(7) { min-width: 50px; }   /* b */
 .type-points-table-wrap th:nth-child(8), .type-points-table-wrap td:nth-child(8) { min-width: 70px; }   /* 小数位 */
-.type-points-table-wrap th:nth-child(9), .type-points-table-wrap td:nth-child(9) { min-width: 64px; }   /* 单位 */
-.type-points-table-wrap th:nth-child(10), .type-points-table-wrap td:nth-child(10) { min-width: 36px; } /* 删除 */
+.type-points-table-wrap th:nth-child(9), .type-points-table-wrap td:nth-child(9) { min-width: 50px; }   /* 单位 */
+.type-points-table-wrap th:nth-child(10), .type-points-table-wrap td:nth-child(10) { min-width: 44px; } /* 显示 */
+.type-points-table-wrap th:nth-child(11), .type-points-table-wrap td:nth-child(11) { min-width: 70px; } /* 操作 */
+.kb-help { display: inline-block; cursor: help; color: var(--accent); font-size: 11px; margin-left: 2px; font-weight: 700; }
+/* 类型编辑表格筛选栏 */
+.type-editor-toolbar { display: flex; align-items: center; gap: 10px; margin: 8px 0; flex-wrap: wrap; }
+.type-editor-toolbar input[type="text"] { padding: 4px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-2); color: var(--ink-1); width: 180px; font-size: 12px; }
+.type-editor-toolbar label { font-size: 12px; color: var(--ink-2); display: flex; align-items: center; gap: 4px; cursor: pointer; white-space: nowrap; }
+.type-editor-toolbar input[type="checkbox"] { accent-color: var(--accent); }
+/* 类型编辑表格移动按钮 */
+.tp-move-btn { padding: 1px 5px; background: transparent; border: 1px solid var(--border); color: var(--ink-2); font-size: 11px; cursor: pointer; border-radius: 3px; line-height: 1; }
+.tp-move-btn:disabled { opacity: .35; cursor: not-allowed; }
+.tp-move-btn:hover:not(:disabled) { background: var(--surface-2); color: var(--ink-1); }
 .tp-del-btn { padding: 2px 6px; background: transparent; color: var(--status-critical); border-color: var(--status-critical); font-size: 12px; }
 
 /* ── 滚动条（深色主题） ── */

@@ -229,9 +229,10 @@ describe('工作台连接栏 HTML 契约', () => {
     expect(new Set(ids).size).toBe(ids.length)
   })
 
-  it('波特率使用数字输入，能显示 230400 等合法自定义值', () => {
-    expect(html).toMatch(/<input id="baudRate"[^>]*type="number"[^>]*min="110"[^>]*max="4000000"/)
-    expect(normalizeConnectionView({ transport: 'rtu', serialPath: 'COM3', baudRate: 230400 }).baudRate).toBe(230400)
+  it('波特率使用固定下拉选项（2400~115200），默认 9600', () => {
+    expect(html).toMatch(/<select id="baudRate"/)
+    expect(html).toContain('value="9600" selected')
+    expect(normalizeConnectionView({ transport: 'rtu', serialPath: 'COM3', baudRate: 115200 }).baudRate).toBe(115200)
   })
 
   it('连接纯函数脚本位于 web-api 之后、app 之前', () => {

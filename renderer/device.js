@@ -251,6 +251,7 @@ const DeviceUI = (() => {
     if (!inst || !type || !blocks) { body.innerHTML = ''; return }
     let html = ''
     type.points.forEach((p, idx) => {
+      if (p.visible === false) return
       const slice = ReadPlan.pickValues(blocks, { area: p.area, addr: p.addr, words: getWords(p.area, p.type) })
       let display = '—', num = null
       if (slice) {
@@ -381,14 +382,22 @@ const DeviceUI = (() => {
       const addrInput = tr.querySelector('.tp-addr'); const typeSel = tr.querySelector('.tp-type')
       const orderSel = tr.querySelector('.tp-order'); const kInput = tr.querySelector('.tp-k')
       const bInput = tr.querySelector('.tp-b'); const decInput = tr.querySelector('.tp-dec'); const unitInput = tr.querySelector('.tp-unit')
+      const visibleCheck = tr.querySelector('.tp-visible')
       if (!nameInput) continue  // 空态占位行
       const pName = nameInput.value.trim()
       if (!pName) return { ok: false, error: `第 ${ri + 1} 行：点位名称不能为空` }
-      const addr = Number(addrInput.value)
+      // 地址解析：支持 16 进制输入
+      const addrRaw = addrInput.value.trim()
+      let addr
+      if (/^0x[0-9a-fA-F]+$/.test(addrRaw)) {
+        addr = parseInt(addrRaw, 16)
+      } else {
+        addr = Number(addrRaw)
+      }
       if (!Number.isInteger(addr) || addr < 0 || addr > 65535) return { ok: false, error: `第 ${ri + 1} 行：地址应为 0~65535 的整数` }
       const k = Number(kInput.value); const b = Number(bInput.value)
       if (Number.isNaN(k) || Number.isNaN(b)) return { ok: false, error: `第 ${ri + 1} 行：k 和 b 必须是数字` }
-      points.push({ name: pName, area: areaSel.value, addr, type: typeSel.value, wordOrder: orderSel.value, k, b, decimals: decInput.value.trim() === '' ? null : Number(decInput.value), unit: unitInput.value.trim() })
+      points.push({ name: pName, area: areaSel.value, addr, type: typeSel.value, wordOrder: orderSel.value, k, b, decimals: decInput.value.trim() === '' ? null : Number(decInput.value), unit: unitInput.value.trim(), visible: visibleCheck ? visibleCheck.checked : true })
     }
     return { ok: true, points }
   }
@@ -428,18 +437,38 @@ const DeviceUI = (() => {
     renderTypePoints(t, state.types.length - 1)
     $('typeSaveBtn').onclick = () => saveTypeFromEditor(t)
     $('typeEditorModal').classList.remove('hidden')
+    // 自动聚焦并全选类型名称，方便改默认名
+    setTimeout(() => {
+      const input = $('typeNameInput')
+      if (input && document.activeElement !== input) {
+        input.focus()
+        input.select()
+      }
+    }, 50)
   }
 
   // ── 类型点位编辑表格（复用 v0.2 逻辑） ──
   function renderTypePoints(t, idx) {
     const tbody = $('typePointsTbody'); tbody.innerHTML = ''
     if (t.points.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--ink-3)">暂无点位，点击下方添加</td></tr>'
+      tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--ink-3)">暂无点位，点击下方添加</td></tr>'
     } else {
-      t.points.forEach((p, pi) => addPointRow(tbody, p, idx, pi))
+      const hexMode = $('hexAddrCheck')?.checked || false
+      const filterText = ($('pointFilterInput')?.value || '').trim().toLowerCase()
+      t.points.forEach((p, pi) => {
+        // 筛选：按名称过滤
+        if (filterText && !p.name.toLowerCase().includes(filterText)) return
+        addPointRow(tbody, p, idx, pi, hexMode)
+      })
     }
+
+    // ── 筛选输入：实时过滤 ──
+    $('pointFilterInput').oninput = () => renderTypePoints(state.types[idx], idx)
+    // ── 16 进制地址勾选 ──
+    $('hexAddrCheck').onchange = () => renderTypePoints(state.types[idx], idx)
+
     $('addPointBtn').onclick = () => {
-      state.types[idx].points.push({ name: '', area: 'holding', addr: 0, type: 'uint16', wordOrder: 'AB', k: 1, b: 0, decimals: null, unit: '' })
+      state.types[idx].points.push({ name: '', area: 'holding', addr: 0, type: 'uint16', wordOrder: 'AB', k: 1, b: 0, decimals: null, unit: '', visible: true })
       renderTypePoints(state.types[idx], idx)
     }
 
@@ -471,25 +500,65 @@ const DeviceUI = (() => {
     }
   }
 
-  function addPointRow(tbody, p, typeIdx, pointIdx) {
+  function addPointRow(tbody, p, typeIdx, pointIdx, hexMode = false) {
     const tr = document.createElement('tr')
-    const areaOptions = ['holding', 'input', 'coil', 'discrete'].map(a =>
-      `<option value="${a}" ${p.area === a ? 'selected' : ''}>${a === 'holding' ? '保持寄存器' : a === 'input' ? '输入寄存器' : a === 'coil' ? '线圈' : '离散输入'}</option>`).join('')
+    tr.dataset.realIndex = pointIdx  // 记录在类型 points 数组中的真实索引
+    const areaOptions = [
+      { v: 'holding',  l: '保持寄存器 (03/06·16)' },
+      { v: 'input',   l: '输入寄存器 (04·只读)' },
+      { v: 'coil',    l: '线圈 (01/05)' },
+      { v: 'discrete',l: '离散输入 (02·只读)' },
+    ].map(a => `<option value="${a.v}" ${p.area === a.v ? 'selected' : ''}>${a.l}</option>`).join('')
     const typeOptions = Object.entries(Codec.TYPES).map(([k, v]) =>
       `<option value="${k}" ${p.type === k ? 'selected' : ''}>${v.label}</option>`).join('')
+    const addrDisplay = hexMode ? '0x' + p.addr.toString(16).toUpperCase() : p.addr
+    const isReadonly = p.area === 'input' || p.area === 'discrete'
+    // 只读区域的类型只显示 uint16（位区域同理）
+    const typeCellHtml = isReadonly ? `<select class="tp-type"><option value="uint16" selected>UInt16</option></select>` : `<select class="tp-type">${typeOptions}</select>`
+    const visibleChecked = p.visible !== false ? ' checked' : ''
     tr.innerHTML = `<td><input class="tp-name" value="${escapeHtml(p.name)}" placeholder="名称"></td>
       <td><select class="tp-area">${areaOptions}</select></td>
-      <td><input class="tp-addr" type="number" value="${p.addr}" min="0" max="65535"></td>
-      <td><select class="tp-type">${typeOptions}</select></td>
+      <td><input class="tp-addr" type="text" value="${escapeHtml(String(addrDisplay))}" data-hex="${hexMode ? '1' : '0'}" data-dec="${p.addr}" placeholder="地址"></td>
+      <td>${typeCellHtml}</td>
       <td><select class="tp-order"><option ${p.wordOrder === 'AB' ? 'selected' : ''}>AB</option><option ${p.wordOrder === 'BA' ? 'selected' : ''}>BA</option></select></td>
       <td><input class="tp-k" type="number" step="any" value="${p.k}"></td>
       <td><input class="tp-b" type="number" step="any" value="${p.b}"></td>
       <td><input class="tp-dec" type="number" min="0" max="6" value="${p.decimals ?? ''}" placeholder="自动"></td>
       <td><input class="tp-unit" value="${escapeHtml(p.unit)}" placeholder="单位"></td>
-      <td><button class="tp-del-btn">×</button></td>`
+      <td style="text-align:center"><input type="checkbox" class="tp-visible"${visibleChecked} title="是否在总览/调试页显示"></td>
+      <td style="white-space:nowrap">
+        <button class="tp-move-btn tp-up" ${pointIdx === 0 ? 'disabled' : ''} title="上移">↑</button>
+        <button class="tp-move-btn tp-down" disabled title="下移">↓</button>
+        <button class="tp-del-btn" style="margin-left:2px">×</button>
+      </td>`
+    // 删除按钮
     tr.querySelector('.tp-del-btn').addEventListener('click', () => {
       state.types[typeIdx].points.splice(pointIdx, 1)
       renderTypePoints(state.types[typeIdx], typeIdx)
+    })
+    // 上移
+    tr.querySelector('.tp-up').addEventListener('click', () => {
+      if (pointIdx <= 0) return
+      const pts = state.types[typeIdx].points
+      ;[pts[pointIdx - 1], pts[pointIdx]] = [pts[pointIdx], pts[pointIdx - 1]]
+      renderTypePoints(state.types[typeIdx], typeIdx)
+    })
+    // 下移
+    tr.querySelector('.tp-down').addEventListener('click', () => {
+      const pts = state.types[typeIdx].points
+      if (pointIdx >= pts.length - 1) return
+      ;[pts[pointIdx], pts[pointIdx + 1]] = [pts[pointIdx + 1], pts[pointIdx]]
+      renderTypePoints(state.types[typeIdx], typeIdx)
+    })
+    // 区域变化时联动：只读区域（input/discrete）限制类型
+    tr.querySelector('.tp-area').addEventListener('change', (e) => {
+      const area = e.target.value
+      const typeSel = tr.querySelector('.tp-type')
+      if (area === 'input' || area === 'discrete') {
+        typeSel.innerHTML = '<option value="uint16" selected>UInt16</option>'
+      } else if (typeSel.options.length <= 1) {
+        typeSel.innerHTML = typeOptions
+      }
     })
     tbody.appendChild(tr)
   }
@@ -619,7 +688,7 @@ const DeviceUI = (() => {
     $('instTransport').value = view.transport
     $('instHost').value = view.host || '192.168.1.'
     $('instPort').value = view.port
-    $('instBaudRate').value = view.baudRate
+    $('instBaudRate').value = String(view.baudRate || 9600)
     $('instDataBits').value = view.dataBits
     $('instParity').value = view.parity
     $('instStopBits').value = view.stopBits
