@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { EventEmitter } from 'events'
 import fs from 'fs'
 import http from 'http'
+import net from 'net'
 import os from 'os'
 import path from 'path'
 
@@ -9,6 +10,13 @@ const { startWebServer } = require('../main/web-server')
 const { parseCliArgs, createOpenCommand } = require('../scripts/start-web')
 
 const running = new Set()
+
+function deferred() {
+  let resolve
+  let reject
+  const promise = new Promise((res, rej) => { resolve = res; reject = rej })
+  return { promise, resolve, reject }
+}
 
 function createRuntime() {
   return Object.assign(new EventEmitter(), {
@@ -308,6 +316,33 @@ describe('安全本地 Web 服务', () => {
     await close(app)
   })
 
+  it('SSE 客户端产生背压后立即断开、清监听且不再接收事件', async () => {
+    const runtime = createRuntime()
+    const app = await start({ runtime, sseMaxBufferedBytes: 1024 })
+    let req
+    try {
+      await new Promise((resolve, reject) => {
+        req = http.get(`${app.origin}/api/events?token=${encodeURIComponent(app.token)}`, res => {
+          res.on('error', () => undefined)
+          res.once('data', () => {
+            res.pause()
+            resolve()
+          })
+        })
+        req.on('error', error => {
+          if (error.code !== 'ECONNRESET') reject(error)
+        })
+      })
+
+      runtime.emit('event', { channel: 'device:data', payload: { text: 'x'.repeat(64 * 1024) } })
+      await vi.waitFor(() => expect(runtime.listenerCount('event')).toBe(0))
+      expect(runtime.emit('event', { channel: 'device:data', payload: { text: 'later' } })).toBe(false)
+    } finally {
+      req?.destroy()
+      await close(app)
+    }
+  })
+
   it('close 幂等并同时关闭 SSE、监听端口和运行时', async () => {
     const runtime = createRuntime()
     const app = await start({ runtime })
@@ -338,6 +373,89 @@ describe('安全本地 Web 服务', () => {
     await ended
     running.delete(app)
     expect(runtime.listenerCount('event')).toBe(0)
+    expect(runtime.close).toHaveBeenCalledTimes(1)
+  })
+
+  it('未完成请求体不能永久阻塞 close，宽限期后释放 socket 和端口', async () => {
+    const runtime = createRuntime()
+    const app = await start({ runtime, shutdownGraceMs: 30 })
+    const socket = net.createConnection({ host: '127.0.0.1', port: app.address.port })
+    socket.on('error', () => undefined)
+    await new Promise(resolve => socket.once('connect', resolve))
+    socket.write([
+      'POST /api/invoke/config%3Aload HTTP/1.1',
+      `Host: 127.0.0.1:${app.address.port}`,
+      `Origin: ${app.origin}`,
+      `X-ModbusMate-Token: ${app.token}`,
+      'Content-Type: application/json',
+      'Content-Length: 100',
+      'Connection: keep-alive',
+      '',
+      '{"args":[',
+    ].join('\r\n'))
+    await new Promise(resolve => setTimeout(resolve, 20))
+
+    const closing = app.close()
+    const outcome = await Promise.race([
+      closing.then(() => 'closed'),
+      new Promise(resolve => setTimeout(() => resolve('timeout'), 250)),
+    ])
+    if (outcome === 'timeout') socket.destroy()
+    await closing
+    running.delete(app)
+
+    expect(outcome).toBe('closed')
+    expect(runtime.close).toHaveBeenCalledTimes(1)
+    await expect(new Promise((resolve, reject) => {
+      const req = http.get(`${app.origin}/`, resolve)
+      req.on('error', reject)
+    })).rejects.toMatchObject({ code: 'ECONNREFUSED' })
+  })
+
+  it('close 的宽限期允许正常在途短请求完成', async () => {
+    const runtime = createRuntime()
+    const entered = deferred()
+    const finish = deferred()
+    let runtimeClosed = false
+    runtime.close.mockImplementation(async () => { runtimeClosed = true })
+    runtime.invoke.mockImplementation(async () => {
+      entered.resolve()
+      await finish.promise
+      if (runtimeClosed) throw new Error('运行时被过早关闭')
+      return '完成'
+    })
+    const app = await start({ runtime, shutdownGraceMs: 100 })
+    const responsePromise = request(app, {
+      method: 'POST', pathname: '/api/invoke/config%3Aload',
+      headers: rpcHeaders(app), body: '{"args":[]}',
+    })
+    await entered.promise
+
+    const first = app.close()
+    const second = app.close()
+    setTimeout(() => finish.resolve(), 10)
+    const startedAt = Date.now()
+    const [response] = await Promise.all([responsePromise, first])
+    running.delete(app)
+
+    expect(first).toBe(second)
+    expect(Date.now() - startedAt).toBeLessThan(250)
+    expect(response.status).toBe(200)
+    expect(JSON.parse(response.text)).toEqual({ ok: true, value: '完成' })
+    expect(runtime.close).toHaveBeenCalledTimes(1)
+  })
+
+  it('HTTP 关闭辅助步骤同步异常时仍关闭运行时并返回聚合错误', async () => {
+    const runtime = createRuntime()
+    const app = await start({ runtime })
+    app.server.closeIdleConnections = () => { throw new Error('关闭空闲连接失败') }
+
+    let error
+    try { await app.close() } catch (caught) { error = caught }
+    running.delete(app)
+
+    expect(error).toBeInstanceOf(AggregateError)
+    expect(error.message).toContain('本地 Web 服务关闭失败')
     expect(runtime.close).toHaveBeenCalledTimes(1)
   })
 
