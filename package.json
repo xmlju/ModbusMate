@@ -17,7 +17,8 @@
     "dist": "electron-builder"
   },
   "dependencies": {
-    "modbus-serial": "^8.0.17"
+    "modbus-serial": "^8.0.17",
+    "serialport": "^13.0.0"
   },
   "devDependencies": {
     "electron": "^35.0.0",
