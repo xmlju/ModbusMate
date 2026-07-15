@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import fs from 'fs'
 import path from 'path'
 import vm from 'vm'
+import { API_KEYS, API_LENGTHS } from './api-contract.js'
 
 function loadPreloadApi(invoke) {
   let api
@@ -27,6 +28,13 @@ function loadPreloadApi(invoke) {
 }
 
 describe('preload 串口 API', () => {
+  it('暴露页面依赖的完整 keys 与函数签名契约', () => {
+    const api = loadPreloadApi(vi.fn())
+    expect(Object.keys(api).sort()).toEqual([...API_KEYS].sort())
+    for (const [method, length] of Object.entries(API_LENGTHS)) {
+      expect(api[method].length, method).toBe(length)
+    }
+  })
   it('调用固定通道并返回成功结果中的 ports', async () => {
     const ports = [{ path: 'COM1' }]
     const invoke = vi.fn().mockResolvedValue({ ok: true, ports })

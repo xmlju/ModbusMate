@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'">
   <title>Modbus 设备调试器</title>
   <link rel="stylesheet" href="style.css">
 </head>
@@ -265,6 +265,7 @@
     </div>
   </div>
 
+  <script src="web-api.js"></script>
   <script src="codec.js"></script>
   <script src="read-plan.js"></script>
   <script src="seed-data.js"></script>
