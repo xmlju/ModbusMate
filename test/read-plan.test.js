@@ -34,6 +34,20 @@ describe('buildReadPlan 点位合并', () => {
       { area: 'holding', addr: 2, words: 1 },
     ])).toEqual([{ area: 'holding', addr: 2, count: 10 }])
   })
+  it('传入更小的 maxBlock 时按该上限拆块（受限帧长设备）', () => {
+    // 连续 100 个点，maxBlock=45 → 拆成 45/45/10 三块
+    const pts = Array.from({ length: 100 }, (_, i) => ({ area: 'holding', addr: 4000 + i, words: 1 }))
+    expect(buildReadPlan(pts, 45)).toEqual([
+      { area: 'holding', addr: 4000, count: 45 },
+      { area: 'holding', addr: 4045, count: 45 },
+      { area: 'holding', addr: 4090, count: 10 },
+    ])
+  })
+  it('maxBlock 非法或缺省时回退到默认 120', () => {
+    const pts = Array.from({ length: 130 }, (_, i) => ({ area: 'holding', addr: i, words: 1 }))
+    expect(buildReadPlan(pts).length).toBe(2)          // 130 → 120 + 10
+    expect(buildReadPlan(pts, 0).length).toBe(2)       // 非法回退默认
+  })
 })
 
 describe('pickValues 切片提取', () => {

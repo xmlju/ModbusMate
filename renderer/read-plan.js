@@ -1,10 +1,13 @@
 // renderer/read-plan.js — 设备点位 → 批量读取块规划（纯函数，无依赖）
 // 浏览器：<script> 引入后使用全局 ReadPlan；Vitest：module.exports 加载
 const ReadPlan = (() => {
-  const MAX_BLOCK = 120   // 单块寄存器上限（Modbus 单次 125，留余量）
+  const MAX_BLOCK = 120   // 单块寄存器默认上限（Modbus 单次 125，留余量）
 
   // points: [{ area, addr, words }] → [{ area, addr, count }]（按区域合并连续块，超限拆块）
-  function buildReadPlan(points) {
+  // maxBlock 可覆盖单块上限：部分设备帧长度受限（如 HS-ESS/PCS 帧最大 100 字节 ≈ 47 寄存器），
+  // 需传入更小的值避免读取响应超帧长。
+  function buildReadPlan(points, maxBlock) {
+    const limit = Number.isFinite(maxBlock) && maxBlock > 0 ? maxBlock : MAX_BLOCK
     const byArea = {}
     for (const p of points) (byArea[p.area] = byArea[p.area] || []).push(p)
     const blocks = []
@@ -14,7 +17,7 @@ const ReadPlan = (() => {
       for (const p of sorted) {
         const pEnd = p.addr + (p.words || 1) - 1
         if (start === null) { start = p.addr; end = pEnd; continue }
-        if (pEnd - start + 1 <= MAX_BLOCK) { end = Math.max(end, pEnd) }
+        if (pEnd - start + 1 <= limit) { end = Math.max(end, pEnd) }
         else { blocks.push({ area, addr: start, count: end - start + 1 }); start = p.addr; end = pEnd }
       }
       if (start !== null) blocks.push({ area, addr: start, count: end - start + 1 })
