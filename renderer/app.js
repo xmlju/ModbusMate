@@ -80,6 +80,23 @@ async function startApp() {
     if (nav) nav.style.display = nav.style.display === 'none' ? '' : 'none'
   })
 
+  // ── 侧栏折叠/展开：状态记浏览器本地，刷新后保持 ──
+  const navEl = document.querySelector('.nav')
+  const navCollapseBtn = $('navCollapseBtn')
+  const applyNavCollapsed = collapsed => {
+    navEl.classList.toggle('collapsed', collapsed)
+    navCollapseBtn.innerHTML = collapsed ? '➡' : '⬅ <span class="nav-text">收起</span>'
+    navCollapseBtn.title = collapsed ? '展开菜单' : '收起菜单'
+  }
+  let navCollapsed = false
+  try { navCollapsed = localStorage.getItem('navCollapsed') === '1' } catch { /* 隐私模式等场景忽略 */ }
+  applyNavCollapsed(navCollapsed)
+  navCollapseBtn.addEventListener('click', () => {
+    navCollapsed = !navCollapsed
+    try { localStorage.setItem('navCollapsed', navCollapsed ? '1' : '0') } catch { /* 存不了就不记忆 */ }
+    applyNavCollapsed(navCollapsed)
+  })
+
   // ── 设备总览页按钮 ──
   $('ovAddInstBtn').addEventListener('click', () => DeviceUI.openInstanceModal())
   $('ovFirstAddBtn').addEventListener('click', () => DeviceUI.openInstanceModal())

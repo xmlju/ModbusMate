@@ -347,3 +347,12 @@ td select { padding: 2px 4px; margin-right: 4px; background: var(--surface-2); c
 /* ── 设备调试：跳过点位灰显 + 16进制地址标注 ── */
 .dd-skip { color: var(--ink-3); font-style: italic; }
 .dd-hex-addr { color: var(--ink-3); font-size: 11px; }
+
+/* ── 侧栏折叠 ── */
+.nav { transition: width .15s ease, min-width .15s ease; }
+.nav-collapse { margin-top: auto; display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 6px; color: var(--ink-3); cursor: pointer; user-select: none; white-space: nowrap; overflow: hidden; }
+.nav-collapse:hover { background: var(--surface-2); color: var(--ink-1); }
+.nav.collapsed { width: 52px; min-width: 52px; padding: 16px 6px; }
+.nav.collapsed .brand { display: none; }
+.nav.collapsed .nav-text { display: none; }
+.nav.collapsed .nav-item, .nav.collapsed .nav-collapse { justify-content: center; padding: 8px; }
