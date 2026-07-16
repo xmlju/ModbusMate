@@ -9,6 +9,7 @@ function createFakeTransport(overrides = {}) {
     disconnect: vi.fn().mockResolvedValue(undefined),
     read: vi.fn(),
     write: vi.fn(),
+    rawRequest: vi.fn(),
     ...overrides,
   }
 }
@@ -440,5 +441,39 @@ describe('ModbusService facade 读写委托', () => {
 
     await expect(service.write('holding', 9, words)).resolves.toBe(result)
     expect(transport.write).toHaveBeenCalledWith('holding', 9, words)
+  })
+
+  it('rawRequest 与轮询读写共享 service 操作队列', async () => {
+    const readGate = createDeferred()
+    const readStarted = createDeferred()
+    const rawResult = { tx: '01 03 00 00 00 01 84 0A', rx: '01 03 02 00 7B F8 67' }
+    const transport = createFakeTransport({
+      read: vi.fn().mockImplementation(async () => {
+        readStarted.resolve()
+        await readGate.promise
+        return [1]
+      }),
+      rawRequest: vi.fn().mockResolvedValue(rawResult),
+    })
+    const service = new ModbusService(vi.fn())
+    service.transport = transport
+    const request = { unitId: 1, functionCode: 3, addr: 0, count: 1 }
+
+    const reading = service.read('holding', 0, 1)
+    await readStarted.promise
+    const rawSending = service.rawRequest(request)
+
+    expect(transport.rawRequest).not.toHaveBeenCalled()
+    readGate.resolve()
+    await reading
+    await expect(rawSending).resolves.toBe(rawResult)
+    expect(transport.rawRequest).toHaveBeenCalledWith(request)
+  })
+
+  it('没有传输时 rawRequest 给出设备未连接错误', async () => {
+    const service = new ModbusService(vi.fn())
+
+    await expect(service.rawRequest({ unitId: 1, functionCode: 3, addr: 0, count: 1 }))
+      .rejects.toThrow('设备未连接')
   })
 })

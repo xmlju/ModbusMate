@@ -7,6 +7,7 @@ const IPC_CHANNELS = Object.freeze([
   'modbus:startPoll',
   'modbus:stopPoll',
   'modbus:write',
+  'modbus:rawRequest',
   'config:load',
   'config:save',
   'device:start',

@@ -300,6 +300,34 @@ describe('网页本地文件安全实现', () => {
     expect(window.removeEventListener).toHaveBeenCalledWith('focus', expect.any(Function))
   })
 
+  it('默认文件选择器在 focus 先于 change 触发时仍等待正常选择结果', async () => {
+    vi.useFakeTimers()
+    const selectedFile = { size: 2, text: vi.fn().mockResolvedValue('{}') }
+    const listeners = {}
+    const input = {
+      files: [], style: {}, remove: vi.fn(),
+      addEventListener: vi.fn((type, fn) => { listeners[type] = fn }),
+      removeEventListener: vi.fn(),
+      click: vi.fn(),
+    }
+    const document = { createElement: vi.fn(() => input), body: { appendChild: vi.fn() } }
+    const window = {
+      addEventListener: vi.fn((type, fn) => { listeners[`window:${type}`] = fn }),
+      removeEventListener: vi.fn(),
+    }
+    const { api } = setup({ document, window })
+
+    const pending = api.importPoints()
+    listeners['window:focus']()
+    input.files = [selectedFile]
+    listeners.change()
+    await vi.runAllTimersAsync()
+
+    await expect(pending).resolves.toEqual({ ok: true, content: '{}' })
+    expect(selectedFile.text).toHaveBeenCalledOnce()
+    vi.useRealTimers()
+  })
+
   it('pagehide 会取消活动文件选择器并可靠返回 canceled', async () => {
     const input = {
       files: [], style: {}, click: vi.fn(), remove: vi.fn(),

@@ -109,6 +109,36 @@ const DeviceConfig = (() => {
     apply(nextInstances)
   }
 
+  async function importPointsFromPicker({ pick, validatePoints, confirmReplace, currentCount = 0 } = {}) {
+    try {
+      if (typeof pick !== 'function') throw new Error('点表导入处理器配置错误：缺少文件读取函数')
+      if (typeof validatePoints !== 'function') throw new Error('点表导入处理器配置错误：缺少点表校验函数')
+      const result = await pick()
+      if (!result?.ok) {
+        if (result?.canceled) return { ok: false, canceled: true }
+        return { ok: false, error: `读取文件失败：${result?.error || '未返回具体原因'}` }
+      }
+
+      let raw
+      try {
+        raw = JSON.parse(result.content)
+      } catch {
+        return { ok: false, error: '导入失败：文件不是有效的 JSON' }
+      }
+
+      const validation = validatePoints(raw)
+      if (!validation?.ok) return { ok: false, error: `导入失败：${validation?.error || '点表格式无效'}` }
+      if (currentCount > 0 && typeof confirmReplace === 'function') {
+        const confirmed = confirmReplace(currentCount)
+        if (!confirmed) return { ok: false, canceled: true }
+      }
+      const points = Array.isArray(validation.points) ? validation.points : []
+      return { ok: true, points, message: `已导入 ${points.length} 个点位，请点保存生效` }
+    } catch (error) {
+      return { ok: false, error: `导入失败：${error?.message || String(error)}` }
+    }
+  }
+
   function createExclusiveAction(onPending = () => {}) {
     let pending = null
     return {
@@ -241,6 +271,7 @@ const DeviceConfig = (() => {
     createSessionGuard,
     deleteInstanceSafely,
     getFocusable,
+    importPointsFromPicker,
     normalizeLoadedDevices,
     normalizeInstanceView,
   }

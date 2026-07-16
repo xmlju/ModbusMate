@@ -44,6 +44,15 @@ describe('preload 串口 API', () => {
     expect(invoke).toHaveBeenCalledWith('serial:list')
   })
 
+  it('rawRequest 通过固定 IPC 通道发送构造请求参数', async () => {
+    const invoke = vi.fn().mockResolvedValue({ tx: '01 03', rx: '01 03' })
+    const api = loadPreloadApi(invoke)
+    const payload = { unitId: 1, functionCode: 3, addr: 0, count: 1 }
+
+    await expect(api.rawRequest(payload)).resolves.toEqual({ tx: '01 03', rx: '01 03' })
+    expect(invoke).toHaveBeenCalledWith('modbus:rawRequest', payload)
+  })
+
   it('恢复失败结果中的 Error message、code 和 cause', async () => {
     const invoke = vi.fn().mockResolvedValue({
       ok: false,

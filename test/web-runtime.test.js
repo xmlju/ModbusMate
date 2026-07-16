@@ -15,6 +15,7 @@ function createDependencies() {
     connect: vi.fn(async () => undefined),
     disconnect: vi.fn(async () => undefined),
     write: vi.fn(async () => 'service-write'),
+    rawRequest: vi.fn(async () => ({ tx: '01 03 00 00 00 01 84 0A', rx: '01 03 02 00 7B F8 67' })),
   }
   const poller = Object.assign(new EventEmitter(), {
     running: false,
@@ -47,6 +48,7 @@ describe('Web Modbus 运行时', () => {
       'modbus:startPoll',
       'modbus:stopPoll',
       'modbus:write',
+      'modbus:rawRequest',
       'config:load',
       'config:save',
       'device:start',
@@ -73,6 +75,7 @@ describe('Web Modbus 运行时', () => {
     const config = { transport: 'rtu', serialPath: 'COM3' }
     const pollConfig = { area: 'holding', addr: 0, count: 2, interval: 1000 }
     const write = { area: 'holding', addr: 10, words: [1, 2] }
+    const rawRequest = { unitId: 1, functionCode: 3, addr: 0, count: 1 }
     const device = { id: 'ems', cfg: { transport: 'rtu' } }
 
     await expect(runtime.invoke('serial:list')).resolves.toEqual([{ path: 'COM3' }])
@@ -82,6 +85,8 @@ describe('Web Modbus 运行时', () => {
     expect(deps.poller.start).toHaveBeenCalledWith(pollConfig)
     await expect(runtime.invoke('modbus:write', write)).resolves.toBe('service-write')
     expect(deps.service.write).toHaveBeenCalledWith('holding', 10, [1, 2])
+    await expect(runtime.invoke('modbus:rawRequest', rawRequest)).resolves.toMatchObject({ tx: expect.stringContaining('01 03') })
+    expect(deps.service.rawRequest).toHaveBeenCalledWith(rawRequest)
 
     deps.poller.running = true
     await expect(runtime.invoke('modbus:write', write)).resolves.toBe('poller-write')

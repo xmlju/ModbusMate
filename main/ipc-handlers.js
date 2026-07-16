@@ -35,6 +35,7 @@ function createMainIpcHandlers({
       poller.running
         ? poller.write(area, addr, words)
         : service.write(area, addr, words),
+    'modbus:rawRequest': (_event, request) => service.rawRequest(request),
 
     'config:load': () => loadConfig(),
     'config:save': (_event, cfg) => saveConfig(cfg),

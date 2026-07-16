@@ -16,6 +16,7 @@ const MAX_READ_COUNT = {
   input: 125,
 }
 const MAX_WRITE_REGISTERS = 123
+const SUPPORTED_RAW_FUNCTIONS = new Set([1, 2, 3, 4, 5, 6, 15, 16])
 
 // 标准 Modbus 异常码（1~11 由规范定义，含义与厂商无关，全设备通用）
 const STANDARD_EXCEPTION_HINTS = {
@@ -275,6 +276,82 @@ function validateAddress(addr) {
   }
 }
 
+function crc16(bytes) {
+  let crc = 0xFFFF
+  for (const byte of bytes) {
+    crc ^= byte
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = (crc & 1) ? ((crc >>> 1) ^ 0xA001) : (crc >>> 1)
+    }
+  }
+  return crc & 0xFFFF
+}
+
+function withCrc(bytes) {
+  const body = Array.from(bytes)
+  const crc = crc16(body)
+  body.push(crc & 0xFF, (crc >>> 8) & 0xFF)
+  return body
+}
+
+function hexBytes(bytes) {
+  return Array.from(bytes).map(byte => Number(byte).toString(16).toUpperCase().padStart(2, '0')).join(' ')
+}
+
+function writeUInt16(bytes, value) {
+  bytes.push((value >>> 8) & 0xFF, value & 0xFF)
+}
+
+function bytesToRegisters(values) {
+  const result = []
+  for (const value of values) writeUInt16(result, value)
+  return result
+}
+
+function packBits(values) {
+  const bytes = Array(Math.ceil(values.length / 8)).fill(0)
+  values.forEach((value, index) => {
+    if (value) bytes[Math.floor(index / 8)] |= 1 << (index % 8)
+  })
+  return bytes
+}
+
+function normalizeRawInteger(value, name, min, max) {
+  const number = Number(value)
+  if (!Number.isInteger(number) || number < min || number > max) {
+    throw new Error(`${name} 必须是 ${min}..${max} 范围内的整数，当前值：${String(value)}`)
+  }
+  return number
+}
+
+function normalizeRawValues(values, name, maxLength, bit = false) {
+  if (!Array.isArray(values) || values.length < 1 || values.length > maxLength) {
+    throw new Error(`${name} 必须是长度 1..${maxLength} 的数组`)
+  }
+  return values.map((value, index) => {
+    if (bit) {
+      if (value !== 0 && value !== 1 && value !== false && value !== true) {
+        throw new Error(`${name}[${index}] 必须是 0 或 1`)
+      }
+      return value === true || value === 1 ? 1 : 0
+    }
+    return normalizeRawInteger(value, `${name}[${index}]`, 0, MAX_ADDRESS)
+  })
+}
+
+function normalizeRawRequest(request = {}) {
+  if (request?.bytes !== undefined || request?.rawBytes !== undefined) {
+    throw new Error('不允许输入裸字节流：请通过功能码、从站地址、起始地址、数量或写入值构造请求')
+  }
+  const unitId = normalizeRawInteger(request.unitId, '从站地址 unitId', 0, 255)
+  const functionCode = normalizeRawInteger(request.functionCode, '功能码 functionCode', 1, 255)
+  if (!SUPPORTED_RAW_FUNCTIONS.has(functionCode)) {
+    throw new Error('仅支持功能码 01/02/03/04/05/06/0F/10 的表单构造请求')
+  }
+  const addr = normalizeRawInteger(request.addr, '起始地址 addr', 0, MAX_ADDRESS)
+  return { ...request, unitId, functionCode, addr }
+}
+
 function validateReadPayload(area, addr, count) {
   validateAddress(addr)
 
@@ -466,6 +543,103 @@ class ModbusTransport {
       return await this.client.writeRegisters(addr, words)
     } catch (err) {
       throw friendly(err, this.params)
+    }
+  }
+
+  async rawRequest(request) {
+    const normalized = normalizeRawRequest(request)
+    return this._enqueueOperation(() => this._rawRequestNow(normalized))
+  }
+
+  async _rawRequestNow(request) {
+    if (!this.client || this.client.isOpen !== true) {
+      throw new Error('设备未连接或连接已断开：无法执行 Modbus 原始报文发送')
+    }
+
+    const previousUnitId = this.params?.unitId
+    if (typeof this.client.setID === 'function') this.client.setID(request.unitId)
+    try {
+      const result = await this._executeRawRequest(request)
+      if (previousUnitId !== undefined && previousUnitId !== request.unitId && typeof this.client.setID === 'function') {
+        this.client.setID(previousUnitId)
+      }
+      return result
+    } catch (err) {
+      if (previousUnitId !== undefined && previousUnitId !== request.unitId && typeof this.client.setID === 'function') {
+        try { this.client.setID(previousUnitId) } catch {}
+      }
+      throw friendly(err, this.params)
+    }
+  }
+
+  async _executeRawRequest({ unitId, functionCode, addr, count, value, values }) {
+    const tx = [unitId, functionCode]
+    writeUInt16(tx, addr)
+
+    if (functionCode >= 1 && functionCode <= 4) {
+      const normalizedCount = normalizeRawInteger(count, '数量 count', 1, functionCode <= 2 ? 2000 : 125)
+      if (addr + normalizedCount - 1 > MAX_ADDRESS) {
+        throw new Error(`读取地址跨度越界：addr + count - 1 不能超过 ${MAX_ADDRESS}（addr=${addr}, count=${normalizedCount}）`)
+      }
+      writeUInt16(tx, normalizedCount)
+      const method = { 1: 'readCoils', 2: 'readDiscreteInputs', 3: 'readHoldingRegisters', 4: 'readInputRegisters' }[functionCode]
+      const response = await this.client[method](addr, normalizedCount)
+      const data = functionCode <= 2
+        ? packBits(Array.from(response.data).slice(0, normalizedCount).map(item => item ? 1 : 0))
+        : bytesToRegisters(Array.from(response.data))
+      return {
+        tx: hexBytes(withCrc(tx)),
+        rx: hexBytes(withCrc([unitId, functionCode, data.length, ...data])),
+      }
+    }
+
+    if (functionCode === 5) {
+      const bit = normalizeRawValues([value], '写入值 value', 1, true)[0]
+      const encoded = bit ? 0xFF00 : 0x0000
+      writeUInt16(tx, encoded)
+      await this.client.writeCoil(addr, bit === 1)
+      return {
+        tx: hexBytes(withCrc(tx)),
+        rx: hexBytes(withCrc(tx)),
+      }
+    }
+
+    if (functionCode === 6) {
+      const word = normalizeRawInteger(value, '写入值 value', 0, MAX_ADDRESS)
+      writeUInt16(tx, word)
+      await this.client.writeRegister(addr, word)
+      return {
+        tx: hexBytes(withCrc(tx)),
+        rx: hexBytes(withCrc(tx)),
+      }
+    }
+
+    if (functionCode === 15) {
+      const bits = normalizeRawValues(values, '写入值 values', 1968, true)
+      if (addr + bits.length - 1 > MAX_ADDRESS) {
+        throw new Error(`写入地址跨度越界：addr + values.length - 1 不能超过 ${MAX_ADDRESS}（addr=${addr}, values.length=${bits.length}）`)
+      }
+      const data = packBits(bits)
+      writeUInt16(tx, bits.length)
+      tx.push(data.length, ...data)
+      await this.client.writeCoils(addr, bits.map(bit => bit === 1))
+      return {
+        tx: hexBytes(withCrc(tx)),
+        rx: hexBytes(withCrc([unitId, functionCode, (addr >>> 8) & 0xFF, addr & 0xFF, (bits.length >>> 8) & 0xFF, bits.length & 0xFF])),
+      }
+    }
+
+    const words = normalizeRawValues(values, '写入值 values', MAX_WRITE_REGISTERS)
+    if (addr + words.length - 1 > MAX_ADDRESS) {
+      throw new Error(`写入地址跨度越界：addr + values.length - 1 不能超过 ${MAX_ADDRESS}（addr=${addr}, values.length=${words.length}）`)
+    }
+    const data = bytesToRegisters(words)
+    writeUInt16(tx, words.length)
+    tx.push(data.length, ...data)
+    await this.client.writeRegisters(addr, words)
+    return {
+      tx: hexBytes(withCrc(tx)),
+      rx: hexBytes(withCrc([unitId, functionCode, (addr >>> 8) & 0xFF, addr & 0xFF, (words.length >>> 8) & 0xFF, words.length & 0xFF])),
     }
   }
 }

@@ -8,6 +8,7 @@ function createDependencies() {
     connect: vi.fn(async () => undefined),
     disconnect: vi.fn(async () => undefined),
     write: vi.fn(async () => 'service-write'),
+    rawRequest: vi.fn(async () => ({ tx: '01 03 00 00 00 01 84 0A', rx: '01 03 02 00 7B F8 67' })),
   }
   const poller = {
     running: false,
@@ -88,6 +89,18 @@ describe('主进程 IPC 业务处理器', () => {
     dependencies.poller.running = true
     await expect(handlers['modbus:write']({}, payload)).resolves.toBe('poller-write')
     expect(dependencies.poller.write).toHaveBeenCalledWith('holding', 10, [1, 2])
+  })
+
+  it('原始报文构造发送固定走共享 service 队列，不经 poller 另开连接', async () => {
+    const dependencies = createDependencies()
+    const handlers = createMainIpcHandlers(dependencies)
+    const payload = { unitId: 1, functionCode: 3, addr: 0, count: 1 }
+
+    await expect(handlers['modbus:rawRequest']({}, payload)).resolves.toMatchObject({
+      tx: expect.stringContaining('01 03'),
+    })
+    expect(dependencies.service.rawRequest).toHaveBeenCalledWith(payload)
+    expect(dependencies.poller.write).not.toHaveBeenCalled()
   })
 
   it('文件对话框继续使用动态取得的当前窗口', async () => {

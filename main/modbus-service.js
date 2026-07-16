@@ -84,6 +84,18 @@ class ModbusService {
     if (!this.transport) throw new Error('设备未连接')
     return this.transport.write(area, addr, words)
   }
+
+  rawRequest(request) {
+    return this._enqueueOperation(() => this._rawRequestNow(request))
+  }
+
+  async _rawRequestNow(request) {
+    if (!this.transport) throw new Error('设备未连接')
+    if (typeof this.transport.rawRequest !== 'function') {
+      throw new Error('当前传输层不支持原始报文构造发送')
+    }
+    return this.transport.rawRequest(request)
+  }
 }
 
 module.exports = ModbusService

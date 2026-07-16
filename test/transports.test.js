@@ -31,6 +31,7 @@ function createFakeClient(overrides = {}) {
     writeCoil: vi.fn(),
     writeRegister: vi.fn(),
     writeRegisters: vi.fn(),
+    writeCoils: vi.fn(),
     ...overrides,
   }
 }
@@ -43,6 +44,7 @@ function expectNoDriverCall(client) {
   expect(client.writeCoil).not.toHaveBeenCalled()
   expect(client.writeRegister).not.toHaveBeenCalled()
   expect(client.writeRegisters).not.toHaveBeenCalled()
+  expect(client.writeCoils).not.toHaveBeenCalled()
 }
 
 function attachClient(transport, client) {
@@ -1035,6 +1037,50 @@ describe('ModbusTransport 读写', () => {
     transport.client = client
 
     await expect(transport.write('mystery', 0, [1])).rejects.toThrow('未知区域类型: mystery')
+    expectNoDriverCall(client)
+  })
+
+  it('构造 FC03 读取请求并返回 TX/RX 十六进制字节', async () => {
+    const client = createFakeClient({
+      readHoldingRegisters: vi.fn().mockResolvedValue({ data: Uint16Array.from([0x007B]) }),
+    })
+    const transport = new ModbusTransport(() => client)
+    attachClient(transport, client)
+
+    await expect(transport.rawRequest({ unitId: 1, functionCode: 3, addr: 0, count: 1 }))
+      .resolves.toEqual({
+        tx: '01 03 00 00 00 01 84 0A',
+        rx: '01 03 02 00 7B F8 67',
+      })
+    expect(client.setID).toHaveBeenCalledWith(1)
+    expect(client.readHoldingRegisters).toHaveBeenCalledWith(0, 1)
+  })
+
+  it('构造 FC10 多寄存器写入请求并展示写入回显', async () => {
+    const client = createFakeClient({
+      writeRegisters: vi.fn().mockResolvedValue({ address: 0x10 }),
+    })
+    const transport = new ModbusTransport(() => client)
+    attachClient(transport, client)
+
+    await expect(transport.rawRequest({
+      unitId: 2, functionCode: 16, addr: 0x10, values: [0x1234, 0x00FF],
+    })).resolves.toEqual({
+      tx: '02 10 00 10 00 02 04 12 34 00 FF F9 11',
+      rx: '02 10 00 10 00 02 40 3E',
+    })
+    expect(client.writeRegisters).toHaveBeenCalledWith(0x10, [0x1234, 0x00FF])
+  })
+
+  it('原始报文构造发送拒绝裸字节和不支持的功能码', async () => {
+    const client = createFakeClient()
+    const transport = new ModbusTransport(() => client)
+    attachClient(transport, client)
+
+    await expect(transport.rawRequest({ bytes: '01 03 00 00 00 01' }))
+      .rejects.toThrow('不允许输入裸字节流')
+    await expect(transport.rawRequest({ unitId: 1, functionCode: 7, addr: 0, count: 1 }))
+      .rejects.toThrow('仅支持功能码')
     expectNoDriverCall(client)
   })
 })

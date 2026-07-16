@@ -14,6 +14,7 @@ const WEB_RUNTIME_CHANNELS = Object.freeze([
   'modbus:startPoll',
   'modbus:stopPoll',
   'modbus:write',
+  'modbus:rawRequest',
   'config:load',
   'config:save',
   'device:start',
@@ -85,6 +86,7 @@ class WebRuntime extends EventEmitter {
       'modbus:write': ({ area, addr, words }) => this.poller.running
         ? this.poller.write(area, addr, words)
         : this.service.write(area, addr, words),
+      'modbus:rawRequest': request => this.service.rawRequest(request),
       'config:load': () => this.configStore.load(),
       'config:save': config => this.configStore.save(config),
       'device:start': ({ id, cfg }) => this.deviceManager.start(id, cfg),

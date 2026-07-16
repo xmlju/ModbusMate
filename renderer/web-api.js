@@ -9,6 +9,7 @@
     startPoll: ['modbus:startPoll', 1],
     stopPoll: ['modbus:stopPoll', 0],
     write: ['modbus:write', 1],
+    rawRequest: ['modbus:rawRequest', 1],
     loadConfig: ['config:load', 0],
     saveConfig: ['config:save', 1],
     deviceStart: ['device:start', 1],
@@ -118,9 +119,10 @@
     const onChange = () => finish(input?.files?.[0])
     const onCancel = () => finish(null)
     const onFocus = () => {
+      // Chrome 局域网页面偶发先触发 focus、后触发 change；给 change 留一个短窗口，避免把正常选择误判成取消。
       focusTimer = setTimeout(() => {
         if (!input?.files?.length) finish(null)
-      }, 0)
+      }, 250)
     }
 
     try {

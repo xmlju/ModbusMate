@@ -17,6 +17,7 @@ const {
   getFocusable,
   createDialogKeyController,
   applyRadioSelection,
+  importPointsFromPicker,
 } = require('../renderer/device-config.js')
 
 const type = {
@@ -118,6 +119,63 @@ describe('设备实例连接配置', () => {
   it('运行中实例拒绝编辑，停止后允许编辑', () => {
     expect(() => assertInstanceEditable(true)).toThrow('设备正在运行，请先停止设备再编辑连接参数')
     expect(() => assertInstanceEditable(false)).not.toThrow()
+  })
+})
+
+describe('点表导入控制流程', () => {
+  const validatePoints = raw => raw?.valid
+    ? { ok: true, points: raw.points }
+    : { ok: false, error: '点表字段不完整' }
+
+  it('导入合法 JSON 后返回点位和保存提示', async () => {
+    const points = [{ name: '电压', area: 'holding', addr: 0, type: 'uint16' }]
+
+    await expect(importPointsFromPicker({
+      pick: async () => ({ ok: true, content: JSON.stringify({ valid: true, points }) }),
+      validatePoints,
+      confirmReplace: () => true,
+      currentCount: 3,
+    })).resolves.toEqual({
+      ok: true,
+      points,
+      message: '已导入 1 个点位，请点保存生效',
+    })
+  })
+
+  it('导入取消、读取失败、JSON 错误和校验失败均给出明确结果', async () => {
+    await expect(importPointsFromPicker({
+      pick: async () => ({ ok: false, canceled: true }),
+      validatePoints,
+    })).resolves.toEqual({ ok: false, canceled: true })
+
+    await expect(importPointsFromPicker({
+      pick: async () => ({ ok: false, error: '浏览器阻止读取文件' }),
+      validatePoints,
+    })).resolves.toMatchObject({ ok: false, error: '读取文件失败：浏览器阻止读取文件' })
+
+    await expect(importPointsFromPicker({
+      pick: async () => ({ ok: true, content: '{bad' }),
+      validatePoints,
+    })).resolves.toMatchObject({ ok: false, error: '导入失败：文件不是有效的 JSON' })
+
+    await expect(importPointsFromPicker({
+      pick: async () => ({ ok: true, content: JSON.stringify({ valid: false }) }),
+      validatePoints,
+    })).resolves.toMatchObject({ ok: false, error: '导入失败：点表字段不完整' })
+  })
+
+  it('替换已有点位时尊重确认结果，未捕获异常会转成导入失败提示', async () => {
+    await expect(importPointsFromPicker({
+      pick: async () => ({ ok: true, content: JSON.stringify({ valid: true, points: [] }) }),
+      validatePoints,
+      confirmReplace: () => false,
+      currentCount: 2,
+    })).resolves.toEqual({ ok: false, canceled: true })
+
+    await expect(importPointsFromPicker({
+      pick: async () => { throw new Error('picker boom') },
+      validatePoints,
+    })).resolves.toMatchObject({ ok: false, error: '导入失败：picker boom' })
   })
 })
 

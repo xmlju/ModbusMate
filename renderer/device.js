@@ -523,16 +523,17 @@ const DeviceUI = (() => {
 
     // ── 点表导入：校验通过后替换编辑器表格，点「保存」才落库 ──
     $('importPointsBtn').onclick = async () => {
-      const r = await window.api.importPoints()
-      if (!r.ok) { if (!r.canceled) $('typeEditorError').textContent = '读取文件失败：' + r.error; return }
-      let raw
-      try { raw = JSON.parse(r.content) } catch { $('typeEditorError').textContent = '导入失败：文件不是有效的 JSON'; return }
-      const v = Codec.validatePoints(raw)
-      if (!v.ok) { $('typeEditorError').textContent = '导入失败：' + v.error; return }
-      if (state.types[idx].points.length > 0 && !confirm(`导入将替换当前 ${state.types[idx].points.length} 个点位，是否继续？`)) return
-      state.types[idx].points = v.points
+      const result = await DeviceConfig.importPointsFromPicker({
+        pick: () => window.api.importPoints(),
+        validatePoints: raw => Codec.validatePoints(raw),
+        currentCount: state.types[idx].points.length,
+        confirmReplace: count => confirm(`导入将替换当前 ${count} 个点位，是否继续？`),
+      })
+      if (result.canceled) return
+      if (!result.ok) { $('typeEditorError').textContent = result.error; return }
+      state.types[idx].points = result.points
       renderTypePoints(state.types[idx], idx)
-      $('typeEditorError').textContent = ''
+      $('typeEditorError').textContent = result.message
     }
   }
 

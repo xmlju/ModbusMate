@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld('api', {
   startPoll:        c    => ipcRenderer.invoke('modbus:startPoll', c),
   stopPoll:         ()   => ipcRenderer.invoke('modbus:stopPoll'),
   write:            w    => ipcRenderer.invoke('modbus:write', w),
+  rawRequest:       r    => ipcRenderer.invoke('modbus:rawRequest', r),
   loadConfig:       ()   => ipcRenderer.invoke('config:load'),
   saveConfig:       c    => ipcRenderer.invoke('config:save', c),
   onData:   fn => ipcRenderer.on('modbus:data',   (_e, d) => fn(d)),

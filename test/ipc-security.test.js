@@ -102,6 +102,7 @@ describe('高权限 IPC 统一注册', () => {
       'modbus:startPoll',
       'modbus:stopPoll',
       'modbus:write',
+      'modbus:rawRequest',
       'config:load',
       'config:save',
       'device:start',

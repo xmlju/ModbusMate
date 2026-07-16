@@ -51,6 +51,9 @@ async function startApp() {
   $('refreshSerialBtn').addEventListener('click', refreshSerialPorts)
   if (connectionView.transport === 'rtu') refreshSerialPorts()
   $('pollBtn').addEventListener('click', onPollClick)
+  $('rawFunctionCode').addEventListener('change', updateRawRequestForm)
+  $('rawSendBtn').addEventListener('click', sendRawRequest)
+  updateRawRequestForm()
   $('plcMode').addEventListener('change', () => { state.plcMode = $('plcMode').checked; renderTable() })
   $('logToggle').addEventListener('click', () => $('logPanel').classList.toggle('collapsed'))
   $('modalCancel').addEventListener('click', closeModal)
@@ -594,6 +597,81 @@ function onStatus(st) {
   setStatus(st.state)
   if (st.state === 'offline') log('error', '设备连接中断，每 5 秒自动重连…')
   if (st.state === 'connected' && state.polling) log('info', '连接已恢复，继续监控')
+}
+
+// ── 原始报文发送（表单构造，不允许裸字节输入）──
+function parseProtocolInteger(raw, name, min, max) {
+  const text = String(raw ?? '').trim()
+  const value = /^0x[0-9a-fA-F]+$/.test(text) ? parseInt(text, 16) : Number(text)
+  if (!Number.isInteger(value) || value < min || value > max) {
+    throw new Error(`${name} 必须是 ${min}~${max} 范围内的整数，支持 0x 前缀十六进制；当前输入：${text || '空'}`)
+  }
+  return value
+}
+
+function parseValueList(raw, name, min, max) {
+  const parts = String(raw ?? '').split(',').map(item => item.trim()).filter(Boolean)
+  if (!parts.length) throw new Error(`${name} 不能为空；多个值请用英文逗号分隔`)
+  return parts.map((part, index) => parseProtocolInteger(part, `${name}[${index + 1}]`, min, max))
+}
+
+function updateRawRequestForm() {
+  const fc = Number($('rawFunctionCode').value)
+  const isRead = [1, 2, 3, 4].includes(fc)
+  const isMultiWrite = fc === 15 || fc === 16
+  $('rawCountWrap').classList.toggle('hidden', !isRead)
+  $('rawValueWrap').classList.toggle('hidden', isRead)
+  $('rawValueWrap').firstChild.textContent = isMultiWrite ? '写入值列表 ' : '写入值 '
+  $('rawValue').placeholder = fc === 15 ? '如 1,0,1,1' : fc === 16 ? '如 0x1234,255' : '支持 0x 前缀'
+  $('rawError').textContent = ''
+}
+
+function buildRawRequestFromForm() {
+  const functionCode = Number($('rawFunctionCode').value)
+  const request = {
+    functionCode,
+    unitId: parseProtocolInteger($('rawUnitId').value, '从站地址', 0, 255),
+    addr: parseProtocolInteger($('rawAddr').value, '起始地址', 0, 65535),
+  }
+  if ([1, 2, 3, 4].includes(functionCode)) {
+    request.count = parseProtocolInteger($('rawCount').value, '数量', 1, functionCode <= 2 ? 2000 : 125)
+  } else if (functionCode === 5) {
+    request.value = parseProtocolInteger($('rawValue').value, '写入值', 0, 1)
+  } else if (functionCode === 6) {
+    request.value = parseProtocolInteger($('rawValue').value, '写入值', 0, 65535)
+  } else if (functionCode === 15) {
+    request.values = parseValueList($('rawValue').value, '写入值列表', 0, 1)
+  } else if (functionCode === 16) {
+    request.values = parseValueList($('rawValue').value, '写入值列表', 0, 65535)
+  }
+  return request
+}
+
+async function sendRawRequest() {
+  if (!state.connected) {
+    $('rawError').textContent = '请先连接设备，再发送原始报文请求'
+    return
+  }
+  let request
+  try {
+    request = buildRawRequestFromForm()
+  } catch (error) {
+    $('rawError').textContent = error.message
+    return
+  }
+  const button = $('rawSendBtn')
+  button.disabled = true
+  $('rawError').textContent = ''
+  try {
+    const result = await window.api.rawRequest(request)
+    $('rawTx').textContent = result.tx || '—'
+    $('rawRx').textContent = result.rx || '—'
+    log('info', `原始报文发送成功：FC ${request.functionCode.toString(16).toUpperCase().padStart(2, '0')}，TX ${result.tx}，RX ${result.rx}`)
+  } catch (error) {
+    $('rawError').textContent = `发送失败：${cleanErr(error.message)}`
+  } finally {
+    button.disabled = false
+  }
 }
 
 // ── 监控 ──
