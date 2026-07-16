@@ -74,6 +74,12 @@ async function startApp() {
     item.addEventListener('click', () => switchNav(item.dataset.page))
   })
 
+  // 隐藏入口：双击左上角品牌标题，显示/隐藏"调试工作台"导航项（内含原始报文发送等底层工具）
+  document.querySelector('.brand')?.addEventListener('dblclick', () => {
+    const nav = document.querySelector('.nav-item[data-page="workbench"]')
+    if (nav) nav.style.display = nav.style.display === 'none' ? '' : 'none'
+  })
+
   // ── 设备总览页按钮 ──
   $('ovAddInstBtn').addEventListener('click', () => DeviceUI.openInstanceModal())
   $('ovFirstAddBtn').addEventListener('click', () => DeviceUI.openInstanceModal())
