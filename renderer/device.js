@@ -433,16 +433,23 @@ const DeviceUI = (() => {
 
   // 保存回调（编辑/新建共用）：校验 → 写回类型 → 落库
   async function saveTypeFromEditor(t) {
+    $('typeEditorError').classList.remove('warning-text')
     const name = $('typeNameInput').value.trim()
     if (!name) { $('typeEditorError').textContent = '类型名称不能为空'; return }
     const c = collectPointsFromTable(t.points)
     if (!c.ok) { $('typeEditorError').textContent = c.error; return }
     const plan = ReadPlan.buildReadPlan(c.points.map(p => ({ area: p.area, addr: p.addr, words: getWords(p.area, p.type) })))
-    if (plan.length > 8) { if (!confirm(`点位过于分散，将产生 ${plan.length} 个读取块，可能影响采集效率。是否继续？`)) return }
+    const planWarning = plan.length > 8
+      ? `提示：当前点位将产生 ${plan.length} 个读取块，可能影响采集效率；仍会照常保存。`
+      : ''
+    $('typeEditorError').textContent = planWarning
+    $('typeEditorError').classList.toggle('warning-text', Boolean(planWarning))
     t.name = name
     t.points = c.points
     try {
-      await saveToConfig(); closeTypeEditor(); renderMgrPage(); renderOverviewPage()
+      await saveToConfig()
+      if (!planWarning) closeTypeEditor()
+      renderMgrPage(); renderOverviewPage()
       // 设备调试页若正在看该类型的设备，重绘以应用新的 k/b/单位/显示等
       if (window.rerenderDeviceDebug) window.rerenderDeviceDebug()
     } catch (error) {
@@ -549,9 +556,7 @@ const DeviceUI = (() => {
     const typeOptions = Object.entries(Codec.TYPES).map(([k, v]) =>
       `<option value="${k}" ${p.type === k ? 'selected' : ''}>${v.label}</option>`).join('')
     const addrDisplay = hexMode ? '0x' + p.addr.toString(16).toUpperCase() : p.addr
-    const isReadonly = p.area === 'input' || p.area === 'discrete'
-    // 只读区域的类型只显示 uint16（位区域同理）
-    const typeCellHtml = isReadonly ? `<select class="tp-type"><option value="uint16" selected>UInt16</option></select>` : `<select class="tp-type">${typeOptions}</select>`
+    const typeCellHtml = `<select class="tp-type">${typeOptions}</select>`
     const visibleChecked = p.visible !== false ? ' checked' : ''
     tr.innerHTML = `<td><input class="tp-name" value="${escapeHtml(p.name)}" placeholder="名称"></td>
       <td><select class="tp-area">${areaOptions}</select></td>

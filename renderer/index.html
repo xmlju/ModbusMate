@@ -129,22 +129,26 @@
           <label>起始地址 <input id="startAddr" type="number" value="0"></label>
           <label>数量 <input id="count" type="number" value="10" min="1" max="120"></label>
           <label>周期
-            <select id="interval">
-              <option value="100">100ms</option>
-              <option value="500">500ms</option>
-              <option value="1000" selected>1s</option>
-              <option value="2000">2s</option>
-              <option value="5000">5s</option>
-              <option value="10000">10s</option>
-            </select>
+            <input id="interval" type="number" min="50" step="1" value="1000" list="intervalPresets">
+            <datalist id="intervalPresets">
+              <option value="100">100ms</option><option value="500">500ms</option>
+              <option value="1000">1s</option><option value="2000">2s</option>
+              <option value="5000">5s</option><option value="10000">10s</option>
+              <option value="15000">15s</option>
+            </datalist>
           </label>
           <button id="pollBtn">▶ 开始监控</button>
           <button id="viewBtn">仪表盘</button>
         </div>
 
-        <!-- 原始报文发送：隐藏在调试工作台内，只允许表单构造，不提供裸字节输入 -->
+        <!-- 原始报文发送：构造模式保留，自由报文只做物理发送 -->
         <details class="raw-panel" id="rawPanel">
           <summary>原始报文发送</summary>
+          <div class="raw-tabs" role="tablist">
+            <button id="rawConstructTab" class="raw-tab active" type="button" role="tab">构造模式</button>
+            <button id="rawFreeTab" class="raw-tab" type="button" role="tab">自由报文</button>
+          </div>
+          <div id="rawConstructPane">
           <div class="raw-form">
             <label>功能码
               <select id="rawFunctionCode">
@@ -169,6 +173,28 @@
           <div class="raw-frames">
             <div><span>TX</span><code id="rawTx">—</code></div>
             <div><span>RX</span><code id="rawRx">—</code></div>
+          </div>
+          </div>
+          <div id="rawFreePane" class="hidden">
+            <div class="raw-form">
+              <label>目标实例
+                <select id="rawDeviceSel" aria-label="自由报文目标实例" style="min-width:210px"></select>
+              </label>
+              <label>十六进制
+                <input id="rawFrameInput" type="text" autocomplete="off" spellcheck="false" placeholder="01 03 00 00 00 0A" style="width:230px">
+              </label>
+              <label><input id="rawAppendCrc" type="checkbox" checked> 自动追加 CRC16</label>
+              <label>响应超时 <input id="rawFrameTimeout" type="number" min="1" step="1" value="1000" style="width:82px"> ms</label>
+              <button id="rawFrameSendBtn" type="button">发送</button>
+            </div>
+            <div class="raw-form" style="margin-top:8px">
+              <label>循环间隔 <input id="rawLoopInterval" type="number" min="50" step="1" value="1000" style="width:82px"> ms</label>
+              <button id="rawLoopBtn" type="button" class="btn ghost sm">启用循环</button>
+              <span id="rawLoopStatus" class="dev-meta">已停止</span>
+            </div>
+            <div id="rawFrameError" class="error-text"></div>
+            <div id="rawFrameHistory" class="raw-history"></div>
+            <div id="rawFrameLog" class="raw-frame-log"></div>
           </div>
         </details>
 
@@ -340,15 +366,13 @@
         <div class="if-row"><label for="instUnitId">从站ID</label><input id="instUnitId" type="number" value="1"></div>
         <div class="if-row"><label for="instTimeout">超时</label><input id="instTimeout" type="number" min="100" max="60000" value="2000"><small>ms</small></div>
         <div class="if-row"><label for="instInterval">周期</label>
-          <select id="instInterval">
-            <option value="100">100ms</option>
-            <option value="500">500ms</option>
-            <option value="1000" selected>1s</option>
-            <option value="2000">2s</option>
-            <option value="5000">5s</option>
-            <option value="10000">10s</option>
+          <input id="instInterval" type="number" min="50" step="1" value="1000" list="instanceIntervalPresets">
+          <datalist id="instanceIntervalPresets">
+            <option value="100">100ms</option><option value="500">500ms</option>
+            <option value="1000">1s</option><option value="2000">2s</option>
+            <option value="5000">5s</option><option value="10000">10s</option>
             <option value="15000">15s</option>
-          </select>
+          </datalist>
         </div>
       </div>
       <div id="instModalError" class="error-text"></div>
@@ -365,6 +389,7 @@
   <script src="read-plan.js"></script>
   <script src="seed-data.js"></script>
   <script src="device-config.js"></script>
+  <script src="raw-frame.js"></script>
   <script src="device.js"></script>
   <script src="app.js"></script>
 </body>

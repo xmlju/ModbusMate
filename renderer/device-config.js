@@ -3,7 +3,6 @@ const DeviceConfig = (() => {
   const connectionUI = typeof module !== 'undefined' && module.exports
     ? require('./connection-ui.js')
     : ConnectionUI
-  const VALID_INTERVALS = new Set([100, 500, 1000, 2000, 5000, 10000, 15000])
   const TWO_WORD_TYPES = new Set(['int32', 'uint32', 'float32'])
   const MANAGED_INSTANCE_KEYS = new Set([
     'id', 'typeId', 'name', 'iconIdx', 'interval',
@@ -28,7 +27,7 @@ const DeviceConfig = (() => {
 
   function normalizeInterval(value) {
     const interval = Number(value)
-    if (!Number.isInteger(interval) || !VALID_INTERVALS.has(interval)) throw new Error('周期值无效')
+    if (!Number.isInteger(interval) || interval < 50) throw new Error('周期必须是大于等于 50ms 的整数')
     return interval
   }
 
@@ -199,7 +198,7 @@ const DeviceConfig = (() => {
         continue
       }
       const instance = safeShallowCopy(raw)
-      if (!VALID_INTERVALS.has(Number(instance.interval))) {
+      if (!Number.isInteger(Number(instance.interval)) || Number(instance.interval) < 50) {
         instance.interval = 1000
         warnings.push(`设备实例 ${instance.id} 的采集周期非法，已重置为 1000ms`)
       } else {

@@ -2,7 +2,7 @@ export const API_KEYS = [
   'listSerialPorts', 'connect', 'disconnect', 'startPoll', 'stopPoll', 'write',
   'loadConfig', 'saveConfig', 'onData', 'onStatus', 'onLog',
   'deviceStart', 'deviceStop', 'deviceWrite', 'onDeviceData', 'onDeviceStatus',
-  'onDeviceLog', 'rawRequest', 'exportPoints', 'importPoints', 'copyImage', 'readImage', 'saveImage',
+  'onDeviceLog', 'deviceRawFrame', 'rawRequest', 'exportPoints', 'importPoints', 'copyImage', 'readImage', 'saveImage',
 ]
 
 export const API_LENGTHS = Object.fromEntries(API_KEYS.map(key => [
@@ -23,4 +23,5 @@ export const RPC_CHANNELS = {
   deviceStart: 'device:start',
   deviceStop: 'device:stop',
   deviceWrite: 'device:write',
+  deviceRawFrame: 'device:rawFrame',
 }

@@ -15,6 +15,7 @@
     deviceStart: ['device:start', 1],
     deviceStop: ['device:stop', 1],
     deviceWrite: ['device:write', 1],
+    deviceRawFrame: ['device:rawFrame', 1],
   })
   const EVENT_METHODS = Object.freeze({
     onData: 'modbus:data',

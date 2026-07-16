@@ -20,6 +20,7 @@ function createDependencies() {
     start: vi.fn(async () => 'device-start'),
     stop: vi.fn(async () => 'device-stop'),
     write: vi.fn(async () => 'device-write'),
+    rawFrame: vi.fn(async () => ({ tx: '01 55', rx: '' })),
   }
   const fs = {
     writeFileSync: vi.fn(),

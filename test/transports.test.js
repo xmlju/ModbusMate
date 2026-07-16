@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { createRequire } from 'node:module'
+import { EventEmitter } from 'node:events'
 
 const require = createRequire(import.meta.url)
 const { ModbusTransport, friendly } = require('../main/transports/modbus-transport.js')
@@ -1082,6 +1083,39 @@ describe('ModbusTransport 读写', () => {
     await expect(transport.rawRequest({ unitId: 1, functionCode: 7, addr: 0, count: 1 }))
       .rejects.toThrow('仅支持功能码')
     expectNoDriverCall(client)
+  })
+
+  it('RTU 自由报文直接写串口并按静默窗口收帧，不限制功能码', async () => {
+    const port = new EventEmitter()
+    port.write = vi.fn((buffer, callback) => {
+      callback?.()
+      setTimeout(() => port.emit('data', Buffer.from([0x01, 0x55, 0x00])), 1)
+    })
+    const client = createFakeClient({ _port: port, _onReceive: vi.fn() })
+    const transport = new RtuTransport(() => client)
+    attachClient(transport, client)
+    transport.params = { transport: 'rtu' }
+
+    await expect(transport.rawFrame([0x01, 0x55, 0x00], 100)).resolves.toEqual({
+      tx: '01 55 00', rx: '01 55 00',
+    })
+    expect(port.write).toHaveBeenCalledOnce()
+  })
+
+  it('RTU 自由报文超时无字节时返回空 RX，TCP 明确拒绝', async () => {
+    const port = new EventEmitter()
+    port.write = vi.fn((buffer, callback) => callback?.())
+    const rtuClient = createFakeClient({ _port: port, _onReceive: vi.fn() })
+    const rtu = new RtuTransport(() => rtuClient)
+    attachClient(rtu, rtuClient)
+    rtu.params = { transport: 'rtu' }
+    await expect(rtu.rawFrame([0x01, 0x55], 5)).resolves.toEqual({ tx: '01 55', rx: '' })
+
+    const tcp = new TcpTransport(() => createFakeClient())
+    const tcpClient = createFakeClient({ _port: port, _onReceive: vi.fn() })
+    attachClient(tcp, tcpClient)
+    tcp.params = { transport: 'tcp' }
+    await expect(tcp.rawFrame([0x01, 0x55], 5)).rejects.toThrow('自由报文暂只支持 RTU')
   })
 })
 

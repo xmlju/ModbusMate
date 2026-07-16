@@ -53,6 +53,15 @@ describe('preload 串口 API', () => {
     expect(invoke).toHaveBeenCalledWith('modbus:rawRequest', payload)
   })
 
+  it('deviceRawFrame 通过固定 IPC 通道发送自由报文字节', async () => {
+    const invoke = vi.fn().mockResolvedValue({ tx: '01 55', rx: '' })
+    const api = loadPreloadApi(invoke)
+    const payload = { id: 'dev1', frameBytes: [1, 0x55], timeoutMs: 1000 }
+
+    await expect(api.deviceRawFrame(payload)).resolves.toEqual({ tx: '01 55', rx: '' })
+    expect(invoke).toHaveBeenCalledWith('device:rawFrame', payload)
+  })
+
   it('恢复失败结果中的 Error message、code 和 cause', async () => {
     const invoke = vi.fn().mockResolvedValue({
       ok: false,

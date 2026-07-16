@@ -129,6 +129,12 @@ class DeviceManager extends EventEmitter {
     return inst.service.write(area, addr, words)
   }
 
+  rawFrame(id, bytes, timeoutMs = 1000) {
+    const inst = this.instances.get(id)
+    if (!inst || !this._isCurrent(id, inst)) return Promise.reject(new Error('设备未启动，无法发送自由报文'))
+    return inst.service.rawFrame(bytes, timeoutMs)
+  }
+
   _nextGeneration(id) {
     const generation = (this.generations.get(id) || 0) + 1
     this.generations.set(id, generation)

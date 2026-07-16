@@ -29,6 +29,7 @@ contextBridge.exposeInMainWorld('api', {
   deviceStart:  p  => ipcRenderer.invoke('device:start', p),
   deviceStop:   id => ipcRenderer.invoke('device:stop', id),
   deviceWrite:  w  => ipcRenderer.invoke('device:write', w),
+  deviceRawFrame: r => ipcRenderer.invoke('device:rawFrame', r),
   onDeviceData:   fn => ipcRenderer.on('device:data',   (_e, d) => fn(d)),
   onDeviceStatus: fn => ipcRenderer.on('device:status', (_e, s) => fn(s)),
   onDeviceLog:    fn => ipcRenderer.on('device:log',    (_e, l) => fn(l)),

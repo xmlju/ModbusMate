@@ -89,6 +89,16 @@ class ModbusService {
     return this._enqueueOperation(() => this._rawRequestNow(request))
   }
 
+  rawFrame(bytes, timeoutMs = 1000) {
+    return this._enqueueOperation(() => this._rawFrameNow(bytes, timeoutMs))
+  }
+
+  async _rawFrameNow(bytes, timeoutMs) {
+    if (!this.transport) throw new Error('设备未连接')
+    if (typeof this.transport.rawFrame !== 'function') throw new Error('当前传输层不支持自由报文发送')
+    return this.transport.rawFrame(bytes, timeoutMs)
+  }
+
   async _rawRequestNow(request) {
     if (!this.transport) throw new Error('设备未连接')
     if (typeof this.transport.rawRequest !== 'function') {

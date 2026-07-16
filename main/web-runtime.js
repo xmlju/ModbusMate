@@ -20,6 +20,7 @@ const WEB_RUNTIME_CHANNELS = Object.freeze([
   'device:start',
   'device:stop',
   'device:write',
+  'device:rawFrame',
 ])
 
 function serializableError(error) {
@@ -93,6 +94,8 @@ class WebRuntime extends EventEmitter {
       'device:stop': id => this.deviceManager.stop(id),
       'device:write': ({ id, area, addr, words }) =>
         this.deviceManager.write(id, area, addr, words),
+      'device:rawFrame': ({ id, frameBytes, timeoutMs }) =>
+        this.deviceManager.rawFrame(id, frameBytes, timeoutMs),
     })
 
     this._registerSourceListeners()

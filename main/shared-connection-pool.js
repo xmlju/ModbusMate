@@ -127,6 +127,11 @@ class SharedConnectionHandle {
     if (!this.service) return Promise.reject(new Error('设备未连接'))
     return this.service.write(area, addr, words)
   }
+
+  rawFrame(bytes, timeoutMs) {
+    if (!this.service) return Promise.reject(new Error('设备未连接，无法发送自由报文'))
+    return this.service.rawFrame(bytes, timeoutMs)
+  }
 }
 
 module.exports = { SharedConnectionPool, connectionKey }

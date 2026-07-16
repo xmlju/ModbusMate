@@ -13,6 +13,7 @@ const IPC_CHANNELS = Object.freeze([
   'device:start',
   'device:stop',
   'device:write',
+  'device:rawFrame',
   'points:export',
   'points:import',
   'copy-image',

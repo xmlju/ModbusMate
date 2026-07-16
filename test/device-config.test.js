@@ -113,7 +113,7 @@ describe('设备实例连接配置', () => {
   it('实例名、周期和类型缺失时给出详细中文错误', () => {
     expect(() => buildInstanceRecord({}, { transport: 'tcp', host: 'x', port: 502, unitId: 1, timeout: 2000, typeId: '', name: 'a', interval: 1000 })).toThrow('请选择设备类型')
     expect(() => buildInstanceRecord({}, { transport: 'tcp', host: 'x', port: 502, unitId: 1, timeout: 2000, typeId: 't', name: ' ', interval: 1000 })).toThrow('请输入实例名称')
-    expect(() => buildInstanceRecord({}, { transport: 'tcp', host: 'x', port: 502, unitId: 1, timeout: 2000, typeId: 't', name: 'a', interval: 123 })).toThrow('周期值无效')
+    expect(() => buildInstanceRecord({}, { transport: 'tcp', host: 'x', port: 502, unitId: 1, timeout: 2000, typeId: 't', name: 'a', interval: 49 })).toThrow('大于等于 50')
   })
 
   it('运行中实例拒绝编辑，停止后允许编辑', () => {
@@ -292,9 +292,9 @@ describe('配置加载安全边界', () => {
     })
     expect(result.types).toEqual([{ id: 'battery_1', name: '<安全文本>', points: [] }])
     expect(result.instances).toEqual([
-      { id: 'dev-1', typeId: 'battery_1', name: '<img>', host: 'x', port: 502, unitId: 1, interval: 1000, assetTag: 'A1' },
+        { id: 'dev-1', typeId: 'battery_1', name: '<img>', host: 'x', port: 502, unitId: 1, interval: 999, assetTag: 'A1' },
     ])
-    expect(result.warnings).toHaveLength(4)
+    expect(result.warnings).toHaveLength(3)
     expect(result.warnings.every(message => /已跳过|已重置/.test(message))).toBe(true)
   })
 })

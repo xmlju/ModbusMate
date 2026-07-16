@@ -18,8 +18,11 @@
     "dist": "electron-builder"
   },
   "dependencies": {
-    "modbus-serial": "^8.0.17",
-    "serialport": "^13.0.0"
+    "mammoth": "^1.12.0",
+    "modbus-serial": "8.0.25",
+    "pdf-parse": "^2.4.5",
+    "serialport": "^13.0.0",
+    "word-extractor": "^1.0.4"
   },
   "devDependencies": {
     "electron": "^35.0.0",

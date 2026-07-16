@@ -180,12 +180,23 @@ td select { padding: 2px 4px; margin-right: 4px; background: var(--surface-2); c
 .raw-form label { display: flex; align-items: center; gap: 4px; color: var(--ink-2); white-space: nowrap; }
 .raw-form input, .raw-form select { padding: 4px 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-2); color: var(--ink-1); }
 .raw-form input { width: 110px; }
+.raw-form input.invalid { border-color: var(--status-critical); color: var(--status-critical); }
 #rawValue { width: 180px; }
 .raw-hint { color: var(--ink-3); font-size: 12px; margin-top: 6px; }
 .raw-frames { display: grid; gap: 6px; margin-top: 6px; font-family: var(--mono); font-size: 12px; }
 .raw-frames div { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 8px; align-items: start; }
 .raw-frames span { color: var(--ink-3); }
 .raw-frames code { color: var(--ink-1); white-space: normal; word-break: break-word; }
+.raw-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin: 0 -12px 10px; padding: 0 12px; }
+.raw-tab { border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--ink-3); padding: 7px 12px; cursor: pointer; }
+.raw-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.raw-history { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+.raw-history button { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.raw-frame-log { max-height: 190px; overflow-y: auto; margin-top: 8px; padding: 6px 8px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; font: 12px/1.7 var(--mono); }
+.raw-frame-log .tx { color: #5b9cf6; }
+.raw-frame-log .rx { color: #37b875; }
+.raw-frame-log .note { color: var(--ink-3); }
+.raw-frame-log .empty { color: var(--ink-3); font-family: inherit; }
 
 /* ── 迷你日志条（设备调试页底） ── */
 .log-strip { padding: 10px 16px; font-family: var(--mono); font-size: 12px; color: var(--ink-3); line-height: 1.8; }
@@ -245,6 +256,7 @@ td select { padding: 2px 4px; margin-right: 4px; background: var(--surface-2); c
 .modal-btns { display: flex; gap: 10px; margin-top: 14px; }
 .modal-btns button { flex: 1; }
 .error-text { color: var(--status-critical); font-size: 12px; min-height: 18px; margin-top: 6px; }
+#typeEditorError.warning-text { color: var(--status-warning); }
 
 /* ── 行设置弹窗（tf-grid） ── */
 .tf-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; text-align: left; }

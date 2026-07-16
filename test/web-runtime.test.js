@@ -28,6 +28,7 @@ function createDependencies() {
     stop: vi.fn(async () => 'device-stop'),
     stopAll: vi.fn(async () => undefined),
     write: vi.fn(async () => 'device-write'),
+    rawFrame: vi.fn(async () => ({ tx: '01 55', rx: '' })),
   })
   const configStore = {
     load: vi.fn(() => ({ transport: 'rtu' })),
@@ -54,6 +55,7 @@ describe('Web Modbus 运行时', () => {
       'device:start',
       'device:stop',
       'device:write',
+      'device:rawFrame',
     ])
     await expect(runtime.invoke('points:import')).rejects.toThrow('不支持的运行时通道：points:import')
     await runtime.close()

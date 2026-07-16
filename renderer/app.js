@@ -53,6 +53,12 @@ async function startApp() {
   $('pollBtn').addEventListener('click', onPollClick)
   $('rawFunctionCode').addEventListener('change', updateRawRequestForm)
   $('rawSendBtn').addEventListener('click', sendRawRequest)
+  $('rawConstructTab').addEventListener('click', () => switchRawTab('construct'))
+  $('rawFreeTab').addEventListener('click', () => switchRawTab('free'))
+  $('rawFrameInput').addEventListener('input', validateRawFrameInput)
+  $('rawFrameSendBtn').addEventListener('click', sendRawFrame)
+  $('rawLoopBtn').addEventListener('click', toggleRawFrameLoop)
+  loadRawFrameHistory()
   updateRawRequestForm()
   $('plcMode').addEventListener('change', () => { state.plcMode = $('plcMode').checked; renderTable() })
   $('logToggle').addEventListener('click', () => $('logPanel').classList.toggle('collapsed'))
@@ -166,6 +172,7 @@ async function startApp() {
   DeviceUI.renderOverviewPage()
   DeviceUI.renderMgrPage()
   populateDeviceDebugSel()
+  populateRawDeviceSel()
 
   log('info', 'Modbus 设备调试器 v0.3 就绪，请连接设备')
 
@@ -245,6 +252,7 @@ function switchNav(page) {
       if (page === 'devOverview') { DeviceUI.renderOverviewPage(); updateOnlineOfflinePills() }
       if (page === 'mgr') DeviceUI.renderMgrPage()
       if (page === 'devDebug') populateDeviceDebugSel()
+      populateRawDeviceSel()
     })
   }
 }
@@ -297,6 +305,7 @@ function refreshOverview() {
   DeviceUI.renderOverviewPage()
   updateOnlineOfflinePills()
   populateDeviceDebugSel()
+  populateRawDeviceSel()
 }
 
 function updateOnlineOfflinePills() {
@@ -328,6 +337,25 @@ function populateDeviceDebugSel() {
   if (curVal && [...sel.options].some(o => o.value === curVal)) sel.value = curVal
 }
 window.populateDeviceDebugSel = populateDeviceDebugSel
+
+function populateRawDeviceSel() {
+  const sel = $('rawDeviceSel')
+  if (!sel) return
+  const current = sel.value
+  sel.replaceChildren()
+  const placeholder = document.createElement('option')
+  placeholder.value = ''
+  placeholder.textContent = '— 选择已配置实例 —'
+  sel.appendChild(placeholder)
+  DeviceUI.state.instances.forEach(inst => {
+    const option = document.createElement('option')
+    option.value = inst.id
+    option.textContent = `${inst.name}（${ConnectionUI.formatConnectionTarget(inst)}）`
+    sel.appendChild(option)
+  })
+  if (current && [...sel.options].some(option => option.value === current)) sel.value = current
+}
+window.populateRawDeviceSel = populateRawDeviceSel
 
 // 计算某点位的原始值/解析值显示字符串
 // 查该点位是否落在本轮被跳过的读取块里（设备当前模式下不可读），返回后端错误信息或 null
@@ -697,6 +725,126 @@ async function sendRawRequest() {
   }
 }
 
+const rawFrameState = { loopTimer: null, sending: false, history: [] }
+const RAW_FRAME_HISTORY_KEY = 'modbusmate.rawFrameHistory'
+
+function switchRawTab(tab) {
+  const free = tab === 'free'
+  $('rawConstructTab').classList.toggle('active', !free)
+  $('rawFreeTab').classList.toggle('active', free)
+  $('rawConstructPane').classList.toggle('hidden', free)
+  $('rawFreePane').classList.toggle('hidden', !free)
+  if (free) populateRawDeviceSel()
+}
+
+function validateRawFrameInput() {
+  const input = $('rawFrameInput')
+  const error = $('rawFrameError')
+  try {
+    RawFrame.parseHex(input.value)
+    input.classList.remove('invalid')
+    if (error.textContent.startsWith('报文')) error.textContent = ''
+    return true
+  } catch (err) {
+    input.classList.add('invalid')
+    error.textContent = err.message
+    return false
+  }
+}
+
+function rawFrameNote(rxHex) {
+  if (!rxHex) return '超时，无字节返回'
+  const bytes = RawFrame.parseHex(rxHex)
+  if (bytes.length >= 3 && (bytes[1] & 0x80) !== 0) {
+    const hints = { 1: '非法功能码', 2: '非法数据地址', 3: '非法数据值', 4: '设备故障', 5: '设备已确认', 6: '设备忙', 8: '存储奇偶校验错误', 10: '网关路径不可用', 11: '网关目标无响应' }
+    return `异常码 ${bytes[2]}：${hints[bytes[2]] || '厂商自定义异常码，请查阅设备手册'}`
+  }
+  return bytes.length ? '原始响应' : '超时，无字节返回'
+}
+
+function appendRawFrameLog(direction, hex, note = '') {
+  const box = $('rawFrameLog')
+  if (!box) return
+  const time = new Date().toTimeString().slice(0, 8) + '.' + String(new Date().getMilliseconds()).padStart(3, '0')
+  const line = document.createElement('div')
+  line.innerHTML = `${time} <span class="${direction === 'TX' ? 'tx' : 'rx'}">${direction === 'TX' ? 'TX →' : 'RX ←'}</span> ${escapeHtml(hex || '—')}${note ? ` <span class="note">${escapeHtml(note)}</span>` : ''}`
+  box.appendChild(line)
+  while (box.children.length > 40) box.firstElementChild.remove()
+  box.scrollTop = box.scrollHeight
+}
+
+function saveRawFrameHistory() {
+  try { localStorage.setItem(RAW_FRAME_HISTORY_KEY, JSON.stringify(rawFrameState.history.slice(0, 20))) } catch { /* 存储不可用时不影响发送 */ }
+}
+
+function renderRawFrameHistory() {
+  const box = $('rawFrameHistory')
+  if (!box) return
+  box.replaceChildren()
+  rawFrameState.history.slice(0, 20).forEach(item => {
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.className = 'btn ghost sm'
+    button.textContent = item.frameHex + (item.appendCrc ? ' + CRC' : '')
+    button.title = `${item.frameHex} · 超时 ${item.timeoutMs}ms`
+    button.addEventListener('click', () => {
+      $('rawFrameInput').value = item.frameHex
+      $('rawAppendCrc').checked = item.appendCrc
+      $('rawFrameTimeout').value = item.timeoutMs
+      $('rawDeviceSel').value = item.id
+      validateRawFrameInput()
+    })
+    box.appendChild(button)
+  })
+}
+
+function loadRawFrameHistory() {
+  try {
+    const value = JSON.parse(localStorage.getItem(RAW_FRAME_HISTORY_KEY) || '[]')
+    if (Array.isArray(value)) rawFrameState.history = value.slice(0, 20)
+  } catch { rawFrameState.history = [] }
+  renderRawFrameHistory()
+}
+
+async function sendRawFrame() {
+  const id = $('rawDeviceSel').value
+  if (!id) { $('rawFrameError').textContent = '请先选择已配置的设备实例'; return }
+  if (!DeviceUI.state.running[id]) { $('rawFrameError').textContent = '该设备实例未启动，请先启动实例再发送自由报文'; return }
+  if (!validateRawFrameInput()) return
+  const timeoutMs = Number($('rawFrameTimeout').value)
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1) { $('rawFrameError').textContent = '响应超时必须是大于 0 的整数毫秒'; return }
+  const frameHex = $('rawFrameInput').value.trim()
+  const appendCrc = $('rawAppendCrc').checked
+  const bytes = RawFrame.parseHex(frameHex)
+  const frameBytes = appendCrc ? RawFrame.appendCrc(bytes) : bytes
+  const button = $('rawFrameSendBtn')
+  button.disabled = true
+  $('rawFrameError').textContent = ''
+  try {
+    const result = await window.api.deviceRawFrame({ id, frameBytes, timeoutMs })
+    const tx = result.tx || RawFrame.formatHex(frameBytes)
+    appendRawFrameLog('TX', tx)
+    appendRawFrameLog('RX', result.rx, rawFrameNote(result.rx || ''))
+    const entry = { id, frameHex, appendCrc, timeoutMs }
+    rawFrameState.history = [entry, ...rawFrameState.history.filter(item => JSON.stringify(item) !== JSON.stringify(entry))].slice(0, 20)
+    saveRawFrameHistory(); renderRawFrameHistory()
+  } catch (error) {
+    $('rawFrameError').textContent = `发送失败：${cleanErr(error.message)}`
+  } finally { button.disabled = false }
+}
+
+function toggleRawFrameLoop() {
+  if (rawFrameState.loopTimer) {
+    clearInterval(rawFrameState.loopTimer); rawFrameState.loopTimer = null
+    $('rawLoopBtn').textContent = '启用循环'; $('rawLoopStatus').textContent = '已停止'; return
+  }
+  const interval = Number($('rawLoopInterval').value)
+  if (!Number.isInteger(interval) || interval < 50) { $('rawFrameError').textContent = '循环间隔必须是大于等于 50ms 的整数'; return }
+  rawFrameState.loopTimer = setInterval(() => { if (!rawFrameState.sending) { rawFrameState.sending = true; sendRawFrame().finally(() => { rawFrameState.sending = false }) } }, interval)
+  $('rawLoopBtn').textContent = '停止循环'; $('rawLoopStatus').textContent = `运行中 · ${interval}ms`
+  sendRawFrame()
+}
+
 // ── 监控 ──
 async function onPollClick() {
   if (state.polling) {
@@ -709,6 +857,7 @@ async function onPollClick() {
   const count = Number($('count').value); const interval = Number($('interval').value)
   if (!Number.isInteger(addr) || addr < 0 || addr > 65535) return log('error', '起始地址应为 0~65535 的整数（协议地址，从 0 起）')
   if (!Number.isInteger(count) || count < 1 || count > 120) return log('error', '数量应为 1~120 的整数')
+  if (!Number.isInteger(interval) || interval < 50) return log('error', '周期必须是大于等于 50ms 的整数')
   const areaChanged = area !== state.area
   Object.assign(state, { area, addr, count, interval })
   const bit = isBitArea()

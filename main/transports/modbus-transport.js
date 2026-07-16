@@ -352,6 +352,19 @@ function normalizeRawRequest(request = {}) {
   return { ...request, unitId, functionCode, addr }
 }
 
+function normalizeRawFrame(bytes, timeoutMs = 1000) {
+  if (!Array.isArray(bytes) || bytes.length < 1) throw new Error('自由报文不能为空')
+  const snapshot = bytes.map((byte, index) => {
+    if (!Number.isInteger(byte) || byte < 0 || byte > 255) {
+      throw new Error(`自由报文第 ${index + 1} 个字节必须是 0~255 的整数`)
+    }
+    return byte
+  })
+  const timeout = Number(timeoutMs)
+  if (!Number.isInteger(timeout) || timeout < 1) throw new Error('响应超时必须是大于 0 的整数毫秒')
+  return { bytes: snapshot, timeoutMs: timeout }
+}
+
 function validateReadPayload(area, addr, count) {
   validateAddress(addr)
 
@@ -549,6 +562,60 @@ class ModbusTransport {
   async rawRequest(request) {
     const normalized = normalizeRawRequest(request)
     return this._enqueueOperation(() => this._rawRequestNow(normalized))
+  }
+
+  rawFrame(bytes, timeoutMs = 1000) {
+    const normalized = normalizeRawFrame(bytes, timeoutMs)
+    return this._enqueueOperation(() => this._rawFrameNow(normalized.bytes, normalized.timeoutMs))
+  }
+
+  async _rawFrameNow(bytes, timeoutMs) {
+    if (!this.client || this.client.isOpen !== true) throw new Error('设备未连接或连接已断开：无法执行自由报文发送')
+    if (this.params?.transport !== 'rtu') throw new Error('自由报文暂只支持 RTU')
+    const port = this.client._port
+    if (!port || typeof port.write !== 'function' || typeof port.on !== 'function') {
+      throw new Error('RTU 串口底层通道不可用：无法执行自由报文发送')
+    }
+    const parser = this.client._onReceive
+    if (parser) port.removeListener('data', parser)
+    try {
+      const response = await new Promise((resolve, reject) => {
+        const received = []
+        let silenceTimer = null
+        let timeoutTimer = null
+        let settled = false
+        const finish = () => {
+          if (settled) return
+          settled = true
+          clearTimeout(silenceTimer)
+          clearTimeout(timeoutTimer)
+          port.removeListener('data', onData)
+          port.removeListener('error', onError)
+          resolve(received)
+        }
+        const onData = chunk => {
+          received.push(...Buffer.from(chunk))
+          clearTimeout(silenceTimer)
+          silenceTimer = setTimeout(finish, 20)
+        }
+        const onError = error => {
+          if (settled) return
+          settled = true
+          clearTimeout(silenceTimer)
+          clearTimeout(timeoutTimer)
+          port.removeListener('data', onData)
+          port.removeListener('error', onError)
+          reject(error)
+        }
+        timeoutTimer = setTimeout(finish, timeoutMs)
+        port.on('data', onData)
+        port.on('error', onError)
+        try { port.write(Buffer.from(bytes), error => { if (error) onError(error) }) } catch (error) { onError(error) }
+      })
+      return { tx: hexBytes(bytes), rx: hexBytes(response) }
+    } finally {
+      if (parser) port.on('data', parser)
+    }
   }
 
   async _rawRequestNow(request) {

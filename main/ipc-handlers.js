@@ -44,6 +44,8 @@ function createMainIpcHandlers({
     'device:stop': (_event, id) => deviceManager.stop(id),
     'device:write': (_event, { id, area, addr, words }) =>
       deviceManager.write(id, area, addr, words),
+    'device:rawFrame': (_event, { id, frameBytes, timeoutMs }) =>
+      deviceManager.rawFrame(id, frameBytes, timeoutMs),
 
     'points:export': async (_event, { defaultName, json }) => {
       const { canceled, filePath } = await dialog.showSaveDialog(getWindow(), {

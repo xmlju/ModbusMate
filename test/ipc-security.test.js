@@ -108,6 +108,7 @@ describe('高权限 IPC 统一注册', () => {
       'device:start',
       'device:stop',
       'device:write',
+      'device:rawFrame',
       'points:export',
       'points:import',
       'copy-image',
