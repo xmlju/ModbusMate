@@ -165,8 +165,9 @@
 
   function createWebApi(options = {}) {
     const locationRef = options.location || globalScope?.location || { search: '', origin: '' }
-    const token = parseToken(locationRef.search)
-    if (!token) return createInvalidApi()
+    // URL 无 token 时不再直接判死：--no-token 局域网模式允许裸地址访问；
+    // 若服务端实际要求令牌，每次请求会被 403 拒绝并提示用完整地址重新打开
+    const token = parseToken(locationRef.search) || ''
 
     const fetchRef = options.fetch || globalScope?.fetch?.bind(globalScope)
     const EventSourceRef = options.EventSource || globalScope?.EventSource

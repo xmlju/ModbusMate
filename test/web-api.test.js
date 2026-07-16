@@ -169,23 +169,28 @@ describe('网页 API 契约与 RPC', () => {
     await expect(api.loadConfig()).resolves.toBe('boundary')
   })
 
-  it.each(['', '?x=1', '?token=a&token=b', `?token=${'x'.repeat(257)}`])('token 无效时不联网且通信方法抛详细启动错误：%s', async search => {
-    const fetch = vi.fn()
+  // --no-token 局域网模式：URL 无 token 也创建可用 API，令牌为空串交服务端裁决
+  it.each(['', '?x=1', '?token=a&token=b', `?token=${'x'.repeat(257)}`])('URL 无有效 token 时仍创建可用 API，请求带空令牌：%s', async search => {
+    const fetch = vi.fn().mockResolvedValue(response({ ok: true, value: 'lan' }))
     const api = createWebApi({ location: { search }, fetch, EventSource: FakeEventSource })
-    await expect(api.connect({})).rejects.toThrow('启动地址')
-    expect(() => api.onData(() => {})).toThrow('启动地址')
-    expect(fetch).not.toHaveBeenCalled()
-    expect(FakeEventSource.instances).toHaveLength(0)
+    await expect(api.loadConfig()).resolves.toBe('lan')
+    expect(fetch).toHaveBeenCalledOnce()
+    expect(fetch.mock.calls[0][1].headers['X-ModbusMate-Token']).toBe('')
   })
 
-  it('token 无效时仍保持完整 keys 和 preload 函数签名，且仅在调用时失败', async () => {
+  it('服务端要求令牌而 URL 无 token 时，请求被服务端拒绝并透出具体错误', async () => {
+    const fetch = vi.fn().mockResolvedValue(response({ ok: false, error: { message: '访问令牌无效，请通过 npm run web 输出的完整地址访问' } }, { status: 403 }))
+    const api = createWebApi({ location: { search: '' }, fetch, EventSource: FakeEventSource })
+    await expect(api.loadConfig()).rejects.toThrow('访问令牌无效')
+  })
+
+  it('URL 无 token 时仍保持完整 keys 和 preload 函数签名', () => {
     const api = createWebApi({ location: { search: '' }, fetch: vi.fn(), EventSource: FakeEventSource })
     expect(Object.keys(api).sort()).toEqual([...API_KEYS].sort())
     expect(api.loadConfig.length).toBe(0)
     expect(api.connect.length).toBe(1)
     expect(api.importPoints.length).toBe(0)
     expect(api.exportPoints.length).toBe(1)
-    await expect(api.exportPoints({})).rejects.toThrow('启动地址')
   })
 
   it('已有 Electron window.api 时绝不覆盖或联网', () => {
