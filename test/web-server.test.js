@@ -90,6 +90,49 @@ describe('安全本地 Web 服务', () => {
     await close(app)
   })
 
+  it('requireToken=false 时免令牌放行 RPC（局域网便捷模式）', async () => {
+    const app = await start({ allowLan: true, requireToken: false })
+    expect(app.url.includes('token=')).toBe(false)  // 干净地址
+    const lanHost = '192.168.1.60:' + app.address.port
+    const res = await request(app, {
+      method: 'POST', pathname: '/api/invoke/config%3Aload',
+      headers: { host: lanHost, origin: `http://${lanHost}`, 'content-type': 'application/json' }, // 无 token 头
+      body: '{"args":[]}',
+    })
+    expect(res.status).toBe(200)
+    await close(app)
+  })
+
+  it('allowLan 开启后绑定 0.0.0.0，并按动态同源校验 RPC', async () => {
+    const app = await start({ allowLan: true })
+    expect(app.address.address).toBe('0.0.0.0')
+
+    // 模拟局域网访问：Host 为局域网地址，Origin 与之同源 → 允许
+    const lanHost = '192.168.1.50:' + app.address.port
+    const ok = await request(app, {
+      method: 'POST', pathname: '/api/invoke/config%3Aload',
+      headers: {
+        host: lanHost, origin: `http://${lanHost}`,
+        'content-type': 'application/json', 'x-modbusmate-token': app.token,
+      },
+      body: '{"args":[]}',
+    })
+    expect(ok.status).toBe(200)
+
+    // 跨站：Origin 与 Host 不一致 → 403（防 CSRF）
+    const csrf = await request(app, {
+      method: 'POST', pathname: '/api/invoke/config%3Aload',
+      headers: {
+        host: lanHost, origin: 'http://evil.test',
+        'content-type': 'application/json', 'x-modbusmate-token': app.token,
+      },
+      body: '{"args":[]}',
+    })
+    expect(csrf.status).toBe(403)
+
+    await close(app)
+  })
+
   it('静态 GET/HEAD 返回正确 MIME 和安全响应头', async () => {
     const app = await start()
     const index = await request(app)
@@ -595,9 +638,15 @@ describe('Web CLI 纯函数', () => {
   it('解析 --no-open、--port 和环境变量', () => {
     expect(parseCliArgs(['--no-open', '--port', '9001'], {
       MODBUSMATE_WEB_PORT: '8123', MODBUSMATE_DATA_DIR: '/tmp/mm',
-    })).toEqual({ open: false, port: 9001, dataDir: '/tmp/mm' })
-    expect(parseCliArgs([], { MODBUSMATE_WEB_PORT: '8123' })).toMatchObject({ open: true, port: 8123 })
+    })).toEqual({ open: false, port: 9001, dataDir: '/tmp/mm', lan: false, noToken: false })
+    expect(parseCliArgs([], { MODBUSMATE_WEB_PORT: '8123' })).toMatchObject({ open: true, port: 8123, lan: false })
     expect(() => parseCliArgs(['--port', 'bad'], {})).toThrow('端口')
+  })
+
+  it('--lan 或 MODBUSMATE_WEB_LAN 开启局域网模式', () => {
+    expect(parseCliArgs(['--lan'], {})).toMatchObject({ lan: true })
+    expect(parseCliArgs([], { MODBUSMATE_WEB_LAN: '1' })).toMatchObject({ lan: true })
+    expect(parseCliArgs([], {})).toMatchObject({ lan: false })
   })
 
   it('按平台生成不经过 shell 拼接的浏览器启动参数', () => {

@@ -12,9 +12,9 @@
     <!-- 左侧全局导航 -->
     <nav class="nav">
       <div class="brand">Modbus 设备调试器<small>企业内部 · Modbus TCP / RTU 监控调试</small></div>
-      <div class="nav-item" data-page="devOverview">📋 设备总览</div>
+      <div class="nav-item active" data-page="devOverview">📋 设备总览</div>
       <div class="nav-item" data-page="devDebug">🔧 设备调试</div>
-      <div class="nav-item active" data-page="workbench">🧪 调试工作台</div>
+      <div class="nav-item" data-page="workbench" style="display:none">🧪 调试工作台</div>
       <div class="nav-item" data-page="log">📜 通信日志</div>
       <div class="nav-item" data-page="mgr">⚙️ 类型/实例管理</div>
     </nav>
@@ -34,7 +34,7 @@
       </div>
 
       <!-- ═══ 页1：设备总览 ═══ -->
-      <div id="devOverviewPage" class="page">
+      <div id="devOverviewPage" class="page active">
         <div class="topbar">
           <h1>📋 设备总览</h1>
           <span class="pill" id="devOnlinePill"><span class="dot good"></span>在线 0</span>
@@ -56,8 +56,11 @@
         <div class="topbar">
           <h1>🔧 设备调试</h1>
           <select id="ddDeviceSel" style="padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface-2);color:var(--ink-1);min-width:200px"></select>
+          <input id="ddFilter" type="text" placeholder="过滤点位" autocomplete="off" style="padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface-2);color:var(--ink-1);width:130px">
           <span id="ddStatus" class="pill"><span class="dot idle"></span>未选择</span>
           <span class="dev-meta" id="ddMeta" style="color:var(--ink-3);font-family:var(--mono);font-size:12px"></span>
+          <button class="btn ghost sm" id="ddRefreshBtn" title="立即刷新一次数据">↻ 刷新</button>
+          <span id="ddAutoHint" style="color:var(--ink-3);font-size:12px" title="数据随采集周期实时刷新">· 实时刷新中</span>
           <button class="btn ghost sm" id="ddToggleBtn" style="display:none">停止</button>
         </div>
         <!-- 设备调试面板：点位表 + 迷你日志 -->
@@ -69,7 +72,7 @@
       </div>
 
       <!-- ═══ 页3：调试工作台（v0.1 全部功能 + 日志栏） ═══ -->
-      <div id="workbenchPage" class="page active">
+      <div id="workbenchPage" class="page">
         <!-- 连接栏 -->
         <div class="bar connection-bar">
           <label>通信方式
@@ -251,6 +254,7 @@
       <div class="type-editor-toolbar">
         <input type="text" id="pointFilterInput" placeholder="按名称筛选点位" autocomplete="off">
         <label><input type="checkbox" id="hexAddrCheck"> 16 进制地址</label>
+        <span id="pointCount" class="list-count" style="margin-left:auto"></span>
       </div>
       <div class="type-points-table-wrap">
         <table>

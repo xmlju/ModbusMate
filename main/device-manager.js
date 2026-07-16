@@ -252,14 +252,41 @@ class DeviceManager extends EventEmitter {
     inst.busy = true
     try {
       const blocks = []
+      const skipped = []
       const list = inst.cfg.blocks
       // 块间间隔：cfg.blockGap 可覆盖，缺省用 DEFAULT_BLOCK_GAP；设为 0 可关闭
       const gap = inst.cfg.blockGap != null ? inst.cfg.blockGap : DEFAULT_BLOCK_GAP
+      // 已知坏块集合：设备寄存器随工作模式增减（如充电桩模式下普通模式寄存器消失），
+      // 坏块只跳过本块、不拖垮整轮；上一轮就失败的块不再重试，避免双倍超时拖慢轮询
+      if (!inst.badBlockKeys) inst.badBlockKeys = new Set()
       for (let i = 0; i < list.length; i++) {
         const b = list[i]
-        const values = await inst.service.read(b.area, b.addr, b.count)
+        const key = `${b.area}:${b.addr}:${b.count}`
+        let values
+        try {
+          values = await inst.service.read(b.area, b.addr, b.count)
+        } catch (firstErr) {
+          if (!this._isCurrent(id, inst)) return
+          // 偶发抖动（上一轮还正常的块）重试一次；已知坏块直接跳过
+          if (inst.badBlockKeys.has(key)) {
+            skipped.push({ ...b, message: firstErr.message })
+            values = null
+          } else {
+            try {
+              values = await inst.service.read(b.area, b.addr, b.count)
+            } catch (retryErr) {
+              if (!this._isCurrent(id, inst)) return
+              inst.badBlockKeys.add(key)
+              skipped.push({ ...b, message: retryErr.message })
+              values = null
+            }
+          }
+        }
         if (!this._isCurrent(id, inst)) return
-        blocks.push({ ...b, values })
+        if (values !== null) {
+          inst.badBlockKeys.delete(key)  // 块恢复可读（如模式切回）则移出坏块集合
+          blocks.push({ ...b, values })
+        }
         // 仅在块之间插入间隔（最后一块之后不需要），满足从站最小轮询间隔要求
         if (gap > 0 && i < list.length - 1) {
           await this._delay(gap)
@@ -267,8 +294,12 @@ class DeviceManager extends EventEmitter {
         }
       }
       if (!this._isCurrent(id, inst)) return
+      // 全部块都失败才算本轮失败（真正断连）；部分成功照常上报数据
+      if (blocks.length === 0 && list.length > 0) {
+        throw new Error(`全部 ${list.length} 个读取块均失败：${skipped[0]?.message || '未知原因'}`)
+      }
       inst.failCount = 0
-      this.emit('data', { id, blocks })
+      this.emit('data', { id, blocks, ...(skipped.length ? { skipped } : {}) })
     } catch (err) {
       if (!this._isCurrent(id, inst)) return
       inst.failCount++

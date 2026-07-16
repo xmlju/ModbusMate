@@ -85,12 +85,20 @@ async function startApp() {
 
   // ── 设备调试页 ──
   $('ddDeviceSel').addEventListener('change', () => renderDebugForDevice($('ddDeviceSel').value))
+  $('ddRefreshBtn').addEventListener('click', () => {
+    const id = $('ddDeviceSel').value
+    if (id) renderDebugForDevice(id)
+  })
+  $('ddFilter').addEventListener('input', () => {
+    const id = $('ddDeviceSel').value
+    if (id) renderDebugForDevice(id)
+  })
   $('ddToggleBtn').addEventListener('click', async () => {
     const id = $('ddDeviceSel').value
-    if (id && DeviceUI.state.running[id]) {
-      await DeviceUI.toggleInstance(id)
-      renderDebugForDevice(id)
-    }
+    if (!id) return
+    // 无论当前是启动还是停止状态，都交给 toggleInstance 切换（原来限定 running 才响应，导致“启动”点不动）
+    await DeviceUI.toggleInstance(id)
+    renderDebugForDevice(id)
   })
 
   // ── 通信日志页 ──
@@ -216,6 +224,20 @@ function switchNav(page) {
 }
 window.switchNav = switchNav  // 暴露给 device.js
 
+// 跳转到设备调试页并选中指定实例（供实例列表/设备总览的“调试”按钮调用）
+function gotoDeviceDebug(id) {
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.page === 'devDebug'))
+  document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === 'devDebugPage'))
+  window.api.loadConfig().then(cfg => {
+    DeviceUI.loadFromConfig(cfg)
+    populateDeviceDebugSel()
+    const sel = $('ddDeviceSel')
+    if (id && [...sel.options].some(o => o.value === id)) sel.value = id
+    renderDebugForDevice(sel.value)
+  })
+}
+window.gotoDeviceDebug = gotoDeviceDebug
+
 // ── 主题切换 ──
 let currentTheme = 'dark'
 let systemMedia = null  // matchMedia 句柄
@@ -281,7 +303,56 @@ function populateDeviceDebugSel() {
 }
 window.populateDeviceDebugSel = populateDeviceDebugSel
 
+// 计算某点位的原始值/解析值显示字符串
+function ddCellValues(p, slice) {
+  let rawStr = '—', parsedStr = '—'
+  if (slice) {
+    if (p.area === 'coil' || p.area === 'discrete') {
+      rawStr = String(slice[0])
+      parsedStr = slice[0] ? 'ON' : 'OFF'
+    } else {
+      rawStr = '0x' + slice.map(v => v.toString(16).toUpperCase().padStart(4, '0')).join(' ')
+      const parsed = Codec.decode(slice, 0, p.type, p.wordOrder || 'AB')
+      if (parsed !== null && typeof parsed === 'number') {
+        const y = Codec.applyTransform(parsed, { k: p.k ?? 1, b: p.b ?? 0, decimals: p.decimals ?? null })
+        parsedStr = (typeof y === 'number' && !Number.isInteger(y) && p.decimals == null ? y.toFixed(2) : String(y))
+          + (p.unit ? ` ${p.unit}` : '')
+      } else if (parsed !== null) {
+        parsedStr = String(parsed)
+      }
+    }
+  }
+  return { rawStr, parsedStr }
+}
+
+// 实时刷新：只更新设备调试表格里的数值单元格（不整体重绘，保留滚动位置），变化闪烁
+let ddCurrentId = null
+function refreshDdValues(id) {
+  if (!ddCurrentId || ddCurrentId !== id) return
+  const ddContent = $('ddContent')
+  const inst = DeviceUI.state.instances.find(i => i.id === id)
+  const type = inst && DeviceUI.state.types.find(t => t.id === inst.typeId)
+  const blocks = DeviceUI.state.data[id]
+  if (!type || !blocks) return
+  ddContent.querySelectorAll('tr[data-pidx]').forEach(tr => {
+    const p = type.points[Number(tr.dataset.pidx)]
+    if (!p) return
+    const slice = ReadPlan.pickValues(blocks, { area: p.area, addr: p.addr, words: DeviceUI.getWords(p.area, p.type) })
+    const { rawStr, parsedStr } = ddCellValues(p, slice)
+    const rawCell = tr.querySelector('.dd-raw'); const parsedCell = tr.querySelector('.dd-parsed')
+    if (rawCell && rawCell.textContent !== rawStr) rawCell.textContent = rawStr
+    if (parsedCell && parsedCell.textContent !== parsedStr) {
+      parsedCell.textContent = parsedStr
+      parsedCell.classList.remove('flash'); void parsedCell.offsetWidth; parsedCell.classList.add('flash')
+    }
+  })
+}
+window.refreshDdValues = refreshDdValues
+// 供 device.js 在类型/点位保存后重绘当前设备调试页（应用新的 k/b/单位/显示等）
+window.rerenderDeviceDebug = () => { if (ddCurrentId) renderDebugForDevice(ddCurrentId) }
+
 function renderDebugForDevice(id) {
+  ddCurrentId = id
   const ddContent = $('ddContent')
   const ddStatus = $('ddStatus')
   const ddMeta = $('ddMeta')
@@ -319,11 +390,15 @@ function renderDebugForDevice(id) {
     <span class="dev-name">${escapeHtml(inst.name)}</span></div>
     <div class="panel-scroll"><table><thead><tr><th>点位</th><th>区域</th><th>地址</th><th>类型</th><th>原始值</th><th>解析值</th><th>操作</th></tr></thead><tbody>`
 
+  let shownCount = 0
+  const ddFilterText = ($('ddFilter')?.value || '').trim().toLowerCase()
   if (type.points.length === 0) {
     tableHtml += '<tr><td colspan="7" style="text-align:center;color:var(--ink-3)">该类型无点位</td></tr>'
   } else {
     type.points.forEach((p, idx) => {
       if (p.visible === false) return
+      if (ddFilterText && !p.name.toLowerCase().includes(ddFilterText)) return
+      shownCount++
       const slice = blocks ? ReadPlan.pickValues(blocks, { area: p.area, addr: p.addr, words: DeviceUI.getWords(p.area, p.type) }) : null
       const dispAddr = p.addr
       const areaLabel = { holding: '保持寄存器', input: '输入寄存器', coil: '线圈', discrete: '离散输入' }[p.area] || p.area
@@ -331,37 +406,22 @@ function renderDebugForDevice(id) {
       const kLabel = p.k !== 1 || p.b !== 0 ? ` ×${p.k}${p.b >= 0 ? `+${p.b}` : p.b}` : ''
       const isReadonly = p.area === 'input' || p.area === 'discrete'
 
-      let rawStr = '—', parsedStr = '—'
-      if (slice) {
-        if (p.area === 'coil' || p.area === 'discrete') {
-          rawStr = String(slice[0])
-          parsedStr = slice[0] ? 'ON' : 'OFF'
-        } else {
-          rawStr = '0x' + slice.map(v => v.toString(16).toUpperCase().padStart(4, '0')).join(' ')
-          const parsed = Codec.decode(slice, 0, p.type, p.wordOrder || 'AB')
-          if (parsed !== null && typeof parsed === 'number') {
-            const y = Codec.applyTransform(parsed, { k: p.k ?? 1, b: p.b ?? 0, decimals: p.decimals ?? null })
-            parsedStr = (typeof y === 'number' && !Number.isInteger(y) && p.decimals == null ? y.toFixed(2) : String(y))
-              + (p.unit ? ` ${p.unit}` : '')
-          } else if (parsed !== null) {
-            parsedStr = String(parsed)
-          }
-        }
-      }
+      const { rawStr, parsedStr } = ddCellValues(p, slice)
 
-      tableHtml += `<tr>
+      tableHtml += `<tr data-pidx="${idx}">
         <td class="val">${escapeHtml(p.name)}</td>
         <td>${areaLabel}</td>
         <td class="mono">${dispAddr}</td>
         <td>${typeLabel}${kLabel}</td>
-        <td class="mono">${rawStr}</td>
-        <td class="val">${parsedStr}</td>
+        <td class="mono dd-raw">${rawStr}</td>
+        <td class="val dd-parsed">${parsedStr}</td>
         <td>${isReadonly ? '' : '<button class="btn ghost sm dd-write" data-inst="' + id + '" data-area="' + p.area + '" data-addr="' + p.addr + '" data-type="' + p.type + '" data-order="' + (p.wordOrder || 'AB') + '">写入</button>'}</td>
       </tr>`
     })
   }
 
   tableHtml += '</tbody></table></div>'
+  tableHtml += `<div class="list-count">共 ${shownCount} 个点位</div>`
 
   // 迷你日志条（最近 5 条当前设备日志）
   tableHtml += '<div class="log-strip" id="ddLogStrip"></div></div>'

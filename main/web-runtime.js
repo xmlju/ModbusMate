@@ -114,20 +114,32 @@ class WebRuntime extends EventEmitter {
   }
 
   _registerSourceListeners() {
-    this._register(this.poller, 'data', payload => this._forward('modbus:data', payload))
-    this._register(this.poller, 'pollError', message => this._forward('modbus:log', {
-      level: 'error',
-      message: `读取失败：${message}`,
-    }))
+    // 读取失败日志节流：间歇性掉线时每周期都报"读取失败"会刷屏，
+    // 改为一段失败只报第一条，恢复出数据时报一条"已恢复"，大幅降低噪音。
+    const errLogged = { poller: false }        // 工作台单连接
+    const devErrLogged = new Set()             // 设备实例：记录处于失败态的 id
+
+    this._register(this.poller, 'data', payload => {
+      if (errLogged.poller) { errLogged.poller = false; this._forward('modbus:log', { level: 'info', message: '读取已恢复' }) }
+      this._forward('modbus:data', payload)
+    })
+    this._register(this.poller, 'pollError', message => {
+      if (errLogged.poller) return  // 同一段失败只报一次
+      errLogged.poller = true
+      this._forward('modbus:log', { level: 'error', message: `读取失败：${message}` })
+    })
     this._register(this.poller, 'offline', () => this._forward('modbus:status', { state: 'offline' }))
     this._register(this.poller, 'online', () => this._forward('modbus:status', { state: 'connected' }))
-    this._register(this.deviceManager, 'data', payload => this._forward('device:data', payload))
+    this._register(this.deviceManager, 'data', payload => {
+      if (devErrLogged.has(payload.id)) { devErrLogged.delete(payload.id); this._forward('device:log', { level: 'info', id: payload.id, message: '读取已恢复' }) }
+      this._forward('device:data', payload)
+    })
     this._register(this.deviceManager, 'status', payload => this._forward('device:status', payload))
-    this._register(this.deviceManager, 'pollError', error => this._forward('device:log', {
-      level: 'error',
-      id: error.id,
-      message: `读取失败：${error.message}`,
-    }))
+    this._register(this.deviceManager, 'pollError', error => {
+      if (devErrLogged.has(error.id)) return  // 同一段失败只报一次
+      devErrLogged.add(error.id)
+      this._forward('device:log', { level: 'error', id: error.id, message: `读取失败：${error.message}` })
+    })
   }
 
   _forward(channel, payload) {

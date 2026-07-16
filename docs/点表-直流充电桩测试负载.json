@@ -1,10 +1,10 @@
 {
   "schema": "modbusmate-points@1",
   "typeName": "直流充电桩测试负载",
-  "exportedAt": "2026-07-15T00:00:00.000Z",
+  "exportedAt": "2026-07-16T00:00:00.000Z",
   "points": [
     {
-      "name": "开关",
+      "name": "开关(0关1开)",
       "area": "coil",
       "addr": 0,
       "type": "uint16",
@@ -18,6 +18,28 @@
       "name": "复位",
       "area": "coil",
       "addr": 1,
+      "type": "uint16",
+      "wordOrder": "AB",
+      "k": 1,
+      "b": 0,
+      "decimals": 0,
+      "unit": ""
+    },
+    {
+      "name": "模拟自定义电池删除Ui表格",
+      "area": "coil",
+      "addr": 150,
+      "type": "uint16",
+      "wordOrder": "AB",
+      "k": 1,
+      "b": 0,
+      "decimals": 0,
+      "unit": ""
+    },
+    {
+      "name": "模拟自定义电池删除Ri表格",
+      "area": "coil",
+      "addr": 151,
       "type": "uint16",
       "wordOrder": "AB",
       "k": 1,
@@ -191,6 +213,127 @@
       "unit": "V"
     },
     {
+      "name": "固定电池类型(0磷酸铁锂1钴酸锂2三元3镍氢4钛酸5锰酸)",
+      "area": "holding",
+      "addr": 1400,
+      "type": "uint16",
+      "wordOrder": "AB",
+      "k": 1,
+      "b": 0,
+      "decimals": 0,
+      "unit": ""
+    },
+    {
+      "name": "固定电池温度(预留)",
+      "area": "holding",
+      "addr": 1401,
+      "type": "uint16",
+      "wordOrder": "AB",
+      "k": 1,
+      "b": 0,
+      "decimals": 0,
+      "unit": ""
+    },
+    {
+      "name": "固定电池单体容量",
+      "area": "holding",
+      "addr": 1402,
+      "type": "uint32",
+      "wordOrder": "AB",
+      "k": 0.001,
+      "b": 0,
+      "decimals": 3,
+      "unit": "AH"
+    },
+    {
+      "name": "固定电池串联数",
+      "area": "holding",
+      "addr": 1404,
+      "type": "uint16",
+      "wordOrder": "AB",
+      "k": 1,
+      "b": 0,
+      "decimals": 0,
+      "unit": ""
+    },
+    {
+      "name": "固定电池并联数",
+      "area": "holding",
+      "addr": 1405,
+      "type": "uint16",
+      "wordOrder": "AB",
+      "k": 1,
+      "b": 0,
+      "decimals": 0,
+      "unit": ""
+    },
+    {
+      "name": "固定电池初始SOC",
+      "area": "holding",
+      "addr": 1406,
+      "type": "uint16",
+      "wordOrder": "AB",
+      "k": 0,
+      "b": 0,
+      "decimals": 0,
+      "unit": 1
+    },
+    {
+      "name": "自定义电池温度",
+      "area": "holding",
+      "addr": 7800,
+      "type": "uint32",
+      "wordOrder": "AB",
+      "k": 0.001,
+      "b": 0,
+      "decimals": 3,
+      "unit": "℃"
+    },
+    {
+      "name": "自定义电池单体容量",
+      "area": "holding",
+      "addr": 7802,
+      "type": "uint32",
+      "wordOrder": "AB",
+      "k": 0.001,
+      "b": 0,
+      "decimals": 3,
+      "unit": "AH"
+    },
+    {
+      "name": "自定义电池串联数",
+      "area": "holding",
+      "addr": 7804,
+      "type": "uint16",
+      "wordOrder": "AB",
+      "k": 1,
+      "b": 0,
+      "decimals": 0,
+      "unit": ""
+    },
+    {
+      "name": "自定义电池并联数",
+      "area": "holding",
+      "addr": 7805,
+      "type": "uint16",
+      "wordOrder": "AB",
+      "k": 1,
+      "b": 0,
+      "decimals": 0,
+      "unit": ""
+    },
+    {
+      "name": "自定义电池初始SOC",
+      "area": "holding",
+      "addr": 7806,
+      "type": "uint16",
+      "wordOrder": "AB",
+      "k": 1,
+      "b": 0,
+      "decimals": 0,
+      "unit": ""
+    },
+    {
       "name": "运行时间",
       "area": "input",
       "addr": 0,
@@ -284,10 +427,10 @@
       "addr": 302,
       "type": "uint16",
       "wordOrder": "AB",
-      "k": 1,
+      "k": 0,
       "b": 0,
       "decimals": 0,
-      "unit": "Hz"
+      "unit": 1
     },
     {
       "name": "A相电压",
@@ -354,6 +497,237 @@
       "b": 0,
       "decimals": 3,
       "unit": "A"
+    },
+    {
+      "name": "固定电池总电压",
+      "area": "input",
+      "addr": 450,
+      "type": "uint32",
+      "wordOrder": "AB",
+      "k": 0.001,
+      "b": 0,
+      "decimals": 3,
+      "unit": "V"
+    },
+    {
+      "name": "固定电池总容量",
+      "area": "input",
+      "addr": 452,
+      "type": "uint32",
+      "wordOrder": "AB",
+      "k": 0.001,
+      "b": 0,
+      "decimals": 3,
+      "unit": "AH"
+    },
+    {
+      "name": "固定电池单体标准电压",
+      "area": "input",
+      "addr": 454,
+      "type": "uint16",
+      "wordOrder": "AB",
+      "k": 0.001,
+      "b": 0,
+      "decimals": 3,
+      "unit": "V"
+    },
+    {
+      "name": "固定电池单体最小电压",
+      "area": "input",
+      "addr": 455,
+      "type": "uint16",
+      "wordOrder": "AB",
+      "k": 0.001,
+      "b": 0,
+      "decimals": 3,
+      "unit": "V"
+    },
+    {
+      "name": "固定电池单体最大电压",
+      "area": "input",
+      "addr": 456,
+      "type": "uint16",
+      "wordOrder": "AB",
+      "k": 0.001,
+      "b": 0,
+      "decimals": 3,
+      "unit": "V"
+    },
+    {
+      "name": "固定电池最大电压",
+      "area": "input",
+      "addr": 457,
+      "type": "uint32",
+      "wordOrder": "AB",
+      "k": 0.001,
+      "b": 0,
+      "decimals": 3,
+      "unit": "V"
+    },
+    {
+      "name": "固定电池最大电流",
+      "area": "input",
+      "addr": 459,
+      "type": "uint32",
+      "wordOrder": "AB",
+      "k": 0.001,
+      "b": 0,
+      "decimals": 3,
+      "unit": "A"
+    },
+    {
+      "name": "固定电池状态(0待机1充2放)",
+      "area": "input",
+      "addr": 461,
+      "type": "uint16",
+      "wordOrder": "AB",
+      "k": 1,
+      "b": 0,
+      "decimals": 0,
+      "unit": ""
+    },
+    {
+      "name": "固定电池当前SOC",
+      "area": "input",
+      "addr": 462,
+      "type": "uint16",
+      "wordOrder": "AB",
+      "k": 1,
+      "b": 0,
+      "decimals": 0,
+      "unit": ""
+    },
+    {
+      "name": "固定电池当前开路电压",
+      "area": "input",
+      "addr": 463,
+      "type": "uint32",
+      "wordOrder": "AB",
+      "k": 0.001,
+      "b": 0,
+      "decimals": 3,
+      "unit": "V"
+    },
+    {
+      "name": "固定电池当前内阻",
+      "area": "input",
+      "addr": 465,
+      "type": "uint32",
+      "wordOrder": "AB",
+      "k": 0.001,
+      "b": 0,
+      "decimals": 3,
+      "unit": "mΩ"
+    },
+    {
+      "name": "自定义电池总电压",
+      "area": "input",
+      "addr": 1750,
+      "type": "uint32",
+      "wordOrder": "AB",
+      "k": 0.001,
+      "b": 0,
+      "decimals": 3,
+      "unit": "V"
+    },
+    {
+      "name": "自定义电池总容量",
+      "area": "input",
+      "addr": 1752,
+      "type": "uint32",
+      "wordOrder": "AB",
+      "k": 0.001,
+      "b": 0,
+      "decimals": 3,
+      "unit": "AH"
+    },
+    {
+      "name": "自定义电池最大电压",
+      "area": "input",
+      "addr": 1754,
+      "type": "uint32",
+      "wordOrder": "AB",
+      "k": 0.001,
+      "b": 0,
+      "decimals": 3,
+      "unit": "V"
+    },
+    {
+      "name": "自定义电池最大电流",
+      "area": "input",
+      "addr": 1756,
+      "type": "uint32",
+      "wordOrder": "AB",
+      "k": 0.001,
+      "b": 0,
+      "decimals": 3,
+      "unit": "A"
+    },
+    {
+      "name": "自定义电池状态(0待机1充2放)",
+      "area": "input",
+      "addr": 1758,
+      "type": "uint16",
+      "wordOrder": "AB",
+      "k": 1,
+      "b": 0,
+      "decimals": 0,
+      "unit": ""
+    },
+    {
+      "name": "自定义电池当前SOC",
+      "area": "input",
+      "addr": 1759,
+      "type": "uint16",
+      "wordOrder": "AB",
+      "k": 1,
+      "b": 0,
+      "decimals": 0,
+      "unit": ""
+    },
+    {
+      "name": "自定义电池当前开路电压",
+      "area": "input",
+      "addr": 1760,
+      "type": "uint32",
+      "wordOrder": "AB",
+      "k": 0.001,
+      "b": 0,
+      "decimals": 3,
+      "unit": "V"
+    },
+    {
+      "name": "自定义电池当前内阻",
+      "area": "input",
+      "addr": 1762,
+      "type": "uint32",
+      "wordOrder": "AB",
+      "k": 0.001,
+      "b": 0,
+      "decimals": 3,
+      "unit": "mΩ"
+    },
+    {
+      "name": "自定义电池当前单体开路电压",
+      "area": "input",
+      "addr": 1764,
+      "type": "uint32",
+      "wordOrder": "AB",
+      "k": 0.001,
+      "b": 0,
+      "decimals": 3,
+      "unit": "V"
+    },
+    {
+      "name": "自定义电池当前单体内阻",
+      "area": "input",
+      "addr": 1766,
+      "type": "uint32",
+      "wordOrder": "AB",
+      "k": 0.001,
+      "b": 0,
+      "decimals": 3,
+      "unit": "mΩ"
     }
   ]
 }

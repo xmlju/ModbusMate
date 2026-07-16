@@ -68,6 +68,34 @@ describe('DeviceManager', () => {
     expect(svc.disconnect).toHaveBeenCalledOnce()
   })
 
+  it('单块读取失败会立即重试一次，重试成功则整轮不失败', async () => {
+    // 第一次读失败、第二次成功 → 整轮应正常出 data，不报 pollError
+    const read = vi.fn()
+      .mockRejectedValueOnce(new Error('Timed out'))
+      .mockResolvedValue([9, 9, 9])
+    const svc = stubService({ read })
+    const dm = new DeviceManager(() => svc)
+    const onData = vi.fn(); const onErr = vi.fn()
+    dm.on('data', onData); dm.on('pollError', onErr)
+    await dm.start('dev1', CFG)
+    await vi.advanceTimersByTimeAsync(50)  // 仅跑首轮（周期 1000ms，不触发第二轮）
+    expect(onData).toHaveBeenCalled()
+    expect(onErr).not.toHaveBeenCalled()
+    expect(read).toHaveBeenCalledTimes(2)  // 1 次失败 + 1 次重试
+    await dm.stopAll()
+  })
+
+  it('单块重试仍失败则整轮失败', async () => {
+    const svc = stubService({ read: vi.fn().mockRejectedValue(new Error('Timed out')) })
+    const dm = new DeviceManager(() => svc)
+    const onErr = vi.fn()
+    dm.on('pollError', onErr)
+    await dm.start('dev1', CFG)
+    await vi.advanceTimersByTimeAsync(1200)
+    expect(onErr).toHaveBeenCalled()
+    await dm.stopAll()
+  })
+
   it('start 后按周期推送带实例 id 的数据块', async () => {
     const svc = stubService()
     const dm = new DeviceManager(() => svc)

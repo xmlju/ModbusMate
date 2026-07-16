@@ -161,7 +161,17 @@ const DeviceUI = (() => {
   // ── 事件处理 ──
   function onDeviceData(d) {
     state.data[d.id] = d.blocks
+    // 多客户端同步：后端在给这台设备推数据，说明它正在运行；本客户端若还不知道，
+    // 补上 running 状态并重绘总览，让未亲自点启动的客户端也能显示数据
+    if (!state.running[d.id]) {
+      state.running[d.id] = true
+      if (state.statuses[d.id] === undefined) state.statuses[d.id] = 'connected'
+      renderOverviewPage()
+      if (window.populateDeviceDebugSel) window.populateDeviceDebugSel()
+    }
     renderInstanceCards(d.id)
+    // 设备调试页正在看这台设备时，实时刷新其数值单元格
+    if (window.refreshDdValues) window.refreshDdValues(d.id)
   }
 
   function onDeviceStatus(s) {
@@ -217,6 +227,7 @@ const DeviceUI = (() => {
           <span class="dev-name">${escapeHtml(inst.name)}</span>
           <span class="dev-meta">${escapeHtml(formatConnectionTarget(inst))} · 周期 ${inst.interval}ms</span>
           <span class="pill"><span class="dot ${statusDot}"></span>${statusText}</span>
+          <button class="btn ghost sm dev-debug-ov" data-id="${safeId}">🔧 调试</button>
           <button class="btn ghost sm dev-toggle-ov" data-id="${safeId}">${running ? '⏸ 停止' : '▶ 启动'}</button>
         </div>
         <div class="dev-body" id="ovBody_${safeId}"></div>
@@ -234,6 +245,10 @@ const DeviceUI = (() => {
     // 绑定启停
     content.querySelectorAll('.dev-toggle-ov').forEach(btn => {
       btn.addEventListener('click', () => toggleInstance(btn.dataset.id))
+    })
+    // 绑定跳转设备调试
+    content.querySelectorAll('.dev-debug-ov').forEach(btn => {
+      btn.addEventListener('click', () => { if (window.gotoDeviceDebug) window.gotoDeviceDebug(btn.dataset.id) })
     })
     // 渲染每设备卡片（仅运行中实例有数据）
     state.instances.filter(inst => state.running[inst.id]).forEach(inst => renderInstanceCards(inst.id))
@@ -300,6 +315,7 @@ const DeviceUI = (() => {
         // 直接绑定类型编辑/删除
         typeList.querySelectorAll('.mgr-edit-type').forEach(btn => btn.onclick = () => openTypeEditor(Number(btn.dataset.idx)))
         typeList.querySelectorAll('.mgr-del-type').forEach(btn => btn.onclick = () => deleteType(Number(btn.dataset.idx)))
+        typeList.insertAdjacentHTML('beforeend', `<div class="list-count">共 ${state.types.length} 个类型</div>`)
       }
     }
     // 实例列表
@@ -319,14 +335,17 @@ const DeviceUI = (() => {
             <span class="mgr-name">${escapeHtml(inst.name)}</span>
             <span class="mgr-meta">${type ? escapeHtml(type.name) : '（未知）'} · ${escapeHtml(formatConnectionTarget(inst))} · ${running ? '运行中' : '已停止'}</span>
             <button class="btn ghost sm mgr-toggle-inst" data-id="${safeId}">${running ? '停止' : '启动'}</button>
+            <button class="btn ghost sm mgr-debug-inst" data-id="${safeId}">调试</button>
             <button class="btn ghost sm mgr-edit-inst" data-id="${safeId}">编辑</button>
             <button class="btn ghost sm mgr-del-inst" style="border-color:var(--status-critical);color:var(--status-critical)" data-id="${safeId}">删除</button>
           </div>`
         }).join('')
         // 直接绑定实例启停/编辑/删除
         instList.querySelectorAll('.mgr-toggle-inst').forEach(btn => btn.onclick = () => toggleInstance(btn.dataset.id))
+        instList.querySelectorAll('.mgr-debug-inst').forEach(btn => btn.onclick = () => { if (window.gotoDeviceDebug) window.gotoDeviceDebug(btn.dataset.id) })
         instList.querySelectorAll('.mgr-edit-inst').forEach(btn => btn.onclick = () => editInstance(btn.dataset.id))
         instList.querySelectorAll('.mgr-del-inst').forEach(btn => btn.onclick = () => deleteInstance(btn.dataset.id))
+        instList.insertAdjacentHTML('beforeend', `<div class="list-count">共 ${state.instances.length} 个实例</div>`)
       }
     }
   }
@@ -373,9 +392,11 @@ const DeviceUI = (() => {
   }
 
   // 从编辑表格逐行收集点位；返回 { ok, points, error }
-  function collectPointsFromTable() {
+  // basePoints：类型现有点位（作为基底）。只用 DOM 中实际渲染的行（按 realIndex）覆盖对应点位，
+  // 这样在启用名称筛选、只渲染部分行时保存，不会丢弃未渲染的点位。
+  function collectPointsFromTable(basePoints = []) {
     const rows = $('typePointsTbody').querySelectorAll('tr')
-    const points = []
+    const result = basePoints.map(p => ({ ...p }))
     for (let ri = 0; ri < rows.length; ri++) {
       const tr = rows[ri]
       const nameInput = tr.querySelector('.tp-name'); const areaSel = tr.querySelector('.tp-area')
@@ -397,16 +418,22 @@ const DeviceUI = (() => {
       if (!Number.isInteger(addr) || addr < 0 || addr > 65535) return { ok: false, error: `第 ${ri + 1} 行：地址应为 0~65535 的整数` }
       const k = Number(kInput.value); const b = Number(bInput.value)
       if (Number.isNaN(k) || Number.isNaN(b)) return { ok: false, error: `第 ${ri + 1} 行：k 和 b 必须是数字` }
-      points.push({ name: pName, area: areaSel.value, addr, type: typeSel.value, wordOrder: orderSel.value, k, b, decimals: decInput.value.trim() === '' ? null : Number(decInput.value), unit: unitInput.value.trim(), visible: visibleCheck ? visibleCheck.checked : true })
+      const point = { name: pName, area: areaSel.value, addr, type: typeSel.value, wordOrder: orderSel.value, k, b, decimals: decInput.value.trim() === '' ? null : Number(decInput.value), unit: unitInput.value.trim(), visible: visibleCheck ? visibleCheck.checked : true }
+      const realIndex = Number(tr.dataset.realIndex)
+      if (Number.isInteger(realIndex) && realIndex >= 0 && realIndex < result.length) {
+        result[realIndex] = point   // 覆盖已有点位
+      } else {
+        result.push(point)          // 新增行
+      }
     }
-    return { ok: true, points }
+    return { ok: true, points: result }
   }
 
   // 保存回调（编辑/新建共用）：校验 → 写回类型 → 落库
   async function saveTypeFromEditor(t) {
     const name = $('typeNameInput').value.trim()
     if (!name) { $('typeEditorError').textContent = '类型名称不能为空'; return }
-    const c = collectPointsFromTable()
+    const c = collectPointsFromTable(t.points)
     if (!c.ok) { $('typeEditorError').textContent = c.error; return }
     const plan = ReadPlan.buildReadPlan(c.points.map(p => ({ area: p.area, addr: p.addr, words: getWords(p.area, p.type) })))
     if (plan.length > 8) { if (!confirm(`点位过于分散，将产生 ${plan.length} 个读取块，可能影响采集效率。是否继续？`)) return }
@@ -414,6 +441,8 @@ const DeviceUI = (() => {
     t.points = c.points
     try {
       await saveToConfig(); closeTypeEditor(); renderMgrPage(); renderOverviewPage()
+      // 设备调试页若正在看该类型的设备，重绘以应用新的 k/b/单位/显示等
+      if (window.rerenderDeviceDebug) window.rerenderDeviceDebug()
     } catch (error) {
       $('typeEditorError').textContent = '保存类型失败：' + (error.message || error)
     }
@@ -455,12 +484,17 @@ const DeviceUI = (() => {
     } else {
       const hexMode = $('hexAddrCheck')?.checked || false
       const filterText = ($('pointFilterInput')?.value || '').trim().toLowerCase()
+      let shown = 0
       t.points.forEach((p, pi) => {
         // 筛选：按名称过滤
         if (filterText && !p.name.toLowerCase().includes(filterText)) return
+        shown++
         addPointRow(tbody, p, idx, pi, hexMode)
       })
+      const countEl = $('pointCount')
+      if (countEl) countEl.textContent = filterText ? `显示 ${shown} / 共 ${t.points.length} 个点位` : `共 ${t.points.length} 个点位`
     }
+    if (t.points.length === 0) { const c = $('pointCount'); if (c) c.textContent = '共 0 个点位' }
 
     // ── 筛选输入：实时过滤 ──
     $('pointFilterInput').oninput = () => renderTypePoints(state.types[idx], idx)
@@ -474,7 +508,7 @@ const DeviceUI = (() => {
 
     // ── 点表导出：取编辑器当前内容（含未保存修改）写 JSON 文件 ──
     $('exportPointsBtn').onclick = async () => {
-      const c = collectPointsFromTable()
+      const c = collectPointsFromTable(t.points)
       if (!c.ok) { $('typeEditorError').textContent = c.error; return }
       if (c.points.length === 0) { $('typeEditorError').textContent = '没有可导出的点位'; return }
       const typeName = $('typeNameInput').value.trim() || t.name

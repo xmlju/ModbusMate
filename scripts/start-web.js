@@ -17,11 +17,19 @@ function parseCliArgs(argv = [], env = process.env) {
   let open = true
   let port = env.MODBUSMATE_WEB_PORT === undefined ? 8765 : parsePort(env.MODBUSMATE_WEB_PORT)
   const dataDir = path.resolve(env.MODBUSMATE_DATA_DIR || path.join(os.homedir(), '.modbusmate'))
+  // 局域网访问：--lan 或环境变量 MODBUSMATE_WEB_LAN=1 开启
+  let lan = env.MODBUSMATE_WEB_LAN === '1' || env.MODBUSMATE_WEB_LAN === 'true'
+  // 免令牌：--no-token 或 MODBUSMATE_WEB_NO_TOKEN=1（局域网现场便捷用，牺牲访问控制）
+  let noToken = env.MODBUSMATE_WEB_NO_TOKEN === '1' || env.MODBUSMATE_WEB_NO_TOKEN === 'true'
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index]
     if (arg === '--no-open') {
       open = false
+    } else if (arg === '--lan') {
+      lan = true
+    } else if (arg === '--no-token') {
+      noToken = true
     } else if (arg === '--port') {
       if (argv[index + 1] === undefined) throw new TypeError('--port 后必须提供端口号')
       port = parsePort(argv[index + 1])
@@ -30,7 +38,19 @@ function parseCliArgs(argv = [], env = process.env) {
       throw new TypeError(`不支持的启动参数：${arg}`)
     }
   }
-  return { open, port, dataDir }
+  return { open, port, dataDir, lan, noToken }
+}
+
+// 枚举本机所有 IPv4 局域网地址（排除回环）
+function lanAddresses() {
+  const result = []
+  const ifaces = os.networkInterfaces()
+  for (const name of Object.keys(ifaces)) {
+    for (const info of ifaces[name] || []) {
+      if (info.family === 'IPv4' && !info.internal) result.push(info.address)
+    }
+  }
+  return result
 }
 
 function createOpenCommand(platform, url) {
@@ -65,9 +85,23 @@ async function main(argv = process.argv.slice(2), env = process.env) {
   let app
   try {
     const options = parseCliArgs(argv, env)
-    app = await startWebServer({ port: options.port, dataDir: options.dataDir })
+    app = await startWebServer({ port: options.port, dataDir: options.dataDir, allowLan: options.lan, requireToken: !options.noToken })
     console.log(`ModbusMate 本地调试地址：${app.url}`)
     console.log(`本地数据目录：${options.dataDir}`)
+    if (options.lan) {
+      const port = app.address.port
+      const suffix = app.requireToken ? `/?token=${encodeURIComponent(app.token)}` : '/'
+      const ips = lanAddresses()
+      if (ips.length) {
+        console.log(app.requireToken
+          ? '局域网访问地址（同一网络的其它设备可用，需带下方完整地址含令牌）：'
+          : '局域网访问地址（免令牌，同一网络设备直接打开即可）：')
+        for (const ip of ips) console.log(`  http://${ip}:${port}${suffix}`)
+      } else {
+        console.log('已开启局域网模式，但未检测到局域网 IPv4 地址（请确认已连接网络）。')
+      }
+      console.log('⚠️ 局域网模式下，同网络内能访问该地址的人都能操作，请勿在不可信网络使用。')
+    }
 
     if (options.open) {
       openBrowser(app.url).catch(error => {

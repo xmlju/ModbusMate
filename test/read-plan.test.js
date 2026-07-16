@@ -48,6 +48,35 @@ describe('buildReadPlan 点位合并', () => {
     expect(buildReadPlan(pts).length).toBe(2)          // 130 → 120 + 10
     expect(buildReadPlan(pts, 0).length).toBe(2)       // 非法回退默认
   })
+  it('maxGap=0 时不跨地址空隙，稀疏寄存器各成一块', () => {
+    // 稀疏点位：0、52-53、200 —— 缺省会合并跨空隙，maxGap=0 应拆开
+    const pts = [
+      { area: 'holding', addr: 0, words: 1 },
+      { area: 'holding', addr: 52, words: 2 },
+      { area: 'holding', addr: 200, words: 1 },
+    ]
+    // 缺省(maxGap=Inf)：0 和 52-53 跨空隙合并成一块(0-53)，200 因超 maxBlock 跨度另起
+    expect(buildReadPlan(pts)).toEqual([
+      { area: 'holding', addr: 0, count: 54 },
+      { area: 'holding', addr: 200, count: 1 },
+    ])
+    expect(buildReadPlan(pts, undefined, 0)).toEqual([
+      { area: 'holding', addr: 0, count: 1 },
+      { area: 'holding', addr: 52, count: 2 },
+      { area: 'holding', addr: 200, count: 1 },
+    ])
+  })
+  it('maxGap 允许小空隙合并、大空隙拆分', () => {
+    const pts = [
+      { area: 'holding', addr: 0, words: 1 },
+      { area: 'holding', addr: 3, words: 1 },   // 空隙 2（1,2）
+      { area: 'holding', addr: 20, words: 1 },  // 空隙 16
+    ]
+    expect(buildReadPlan(pts, undefined, 2)).toEqual([
+      { area: 'holding', addr: 0, count: 4 },   // 0 和 3 合并（空隙2≤2）
+      { area: 'holding', addr: 20, count: 1 },  // 20 拆开（空隙16>2）
+    ])
+  })
 })
 
 describe('pickValues 切片提取', () => {

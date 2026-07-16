@@ -70,7 +70,7 @@ const DeviceConfig = (() => {
       interval: normalizeInterval(instance.interval),
       // 块间隔与单块上限：受设备帧长度/最小轮询间隔约束时可在实例上配置，透传给采集层
       ...(instance.blockGap != null ? { blockGap: instance.blockGap } : {}),
-      blocks: buildReadPlan(points, instance.maxBlock),
+      blocks: buildReadPlan(points, instance.maxBlock, instance.maxGap),
     }
   }
 

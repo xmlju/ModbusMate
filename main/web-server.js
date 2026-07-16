@@ -211,8 +211,12 @@ function closeListeningServer(server, sockets, graceMs) {
 }
 
 async function startWebServer(options = {}) {
-  const host = options.host ?? LOOPBACK_HOST
-  if (host !== LOOPBACK_HOST) throw new TypeError('Web 服务只允许监听本机回环地址 127.0.0.1')
+  // 默认只绑回环地址；显式开启 allowLan 后绑定 0.0.0.0 供局域网访问（仍需正确令牌 + 同源校验）
+  const allowLan = options.allowLan === true
+  const host = options.host ?? (allowLan ? '0.0.0.0' : LOOPBACK_HOST)
+  if (!allowLan && host !== LOOPBACK_HOST) {
+    throw new TypeError('Web 服务默认只允许监听本机回环地址 127.0.0.1；如需局域网访问请开启 allowLan')
+  }
   const port = options.port ?? DEFAULT_PORT
   if (!Number.isInteger(port) || port < 0 || port > 65535) {
     throw new TypeError('Web 服务端口必须是 0 到 65535 的整数')
@@ -229,6 +233,8 @@ async function startWebServer(options = {}) {
   const rendererRoot = path.resolve(options.rendererRoot ?? path.join(__dirname, '..', 'renderer'))
   const rendererRealRoot = await fs.promises.realpath(rendererRoot)
   const dataDir = path.resolve(options.dataDir ?? path.join(os.homedir(), '.modbusmate'))
+  // requireToken=false 时不校验访问令牌（局域网现场便捷模式，任意同源请求放行）
+  const requireToken = options.requireToken !== false
   const token = options.token ?? crypto.randomBytes(32).toString('base64url')
   if (typeof token !== 'string' || token.length === 0) throw new TypeError('Web 访问令牌不能为空')
   const runtime = options.runtime ?? createWebRuntime({
@@ -239,6 +245,22 @@ async function startWebServer(options = {}) {
   let closing = false
   let origin
   let expectedHost
+
+  // 同源校验：防 CSRF。回环模式严格比对固定 origin/host；
+  // 局域网模式改为动态同源——Origin（存在时）必须等于 http://<请求的 Host>，
+  // 这样任意本机/局域网地址都可用，但跨站请求仍被拦截。令牌始终是主要凭证。
+  function requestSameOrigin(req, { requireOrigin }) {
+    const reqHost = req.headers.host
+    if (!reqHost) return false
+    const reqOrigin = req.headers.origin
+    if (allowLan) {
+      if (reqOrigin === undefined) return !requireOrigin
+      return reqOrigin === `http://${reqHost}`
+    }
+    if (reqHost !== expectedHost) return false
+    if (reqOrigin === undefined) return !requireOrigin
+    return reqOrigin === origin
+  }
 
   const server = http.createServer(async (req, res) => {
     const rawPath = String(req.url || '/').split('?', 1)[0]
@@ -258,12 +280,12 @@ async function startWebServer(options = {}) {
           sendRpcError(res, 404, 'RPC 通道不存在')
           return
         }
-        if (!tokenMatches(token, req.headers['x-modbusmate-token'])) {
+        if (requireToken && !tokenMatches(token, req.headers['x-modbusmate-token'])) {
           sendRpcError(res, 401, '访问令牌无效')
           return
         }
-        if (req.headers.origin !== origin || req.headers.host !== expectedHost) {
-          sendRpcError(res, 403, '仅允许当前本地页面调用')
+        if (!requestSameOrigin(req, { requireOrigin: true })) {
+          sendRpcError(res, 403, '仅允许当前页面调用')
           return
         }
         const contentType = String(req.headers['content-type'] || '').split(';', 1)[0].trim().toLowerCase()
@@ -291,17 +313,13 @@ async function startWebServer(options = {}) {
           send(res, 405, '方法不允许', { Allow: 'GET' })
           return
         }
-        const requestUrl = new URL(req.url, origin)
-        if (!tokenMatches(token, requestUrl.searchParams.get('token'))) {
+        const requestUrl = new URL(req.url, `http://${req.headers.host || LOOPBACK_HOST}`)
+        if (requireToken && !tokenMatches(token, requestUrl.searchParams.get('token'))) {
           send(res, 401, '访问令牌无效')
           return
         }
-        if (req.headers.origin !== undefined && req.headers.origin !== origin) {
+        if (!requestSameOrigin(req, { requireOrigin: false })) {
           send(res, 403, '事件流仅允许同源页面访问')
-          return
-        }
-        if (req.headers.host !== expectedHost) {
-          send(res, 403, '事件流 Host 无效')
           return
         }
 
@@ -447,9 +465,10 @@ async function startWebServer(options = {}) {
     server,
     runtime,
     origin,
-    url: `${origin}/?token=${encodeURIComponent(token)}`,
+    url: requireToken ? `${origin}/?token=${encodeURIComponent(token)}` : `${origin}/`,
     address,
     token,
+    requireToken,
     close,
   }
 }
