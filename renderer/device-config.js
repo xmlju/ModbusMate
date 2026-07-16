@@ -70,6 +70,8 @@ const DeviceConfig = (() => {
       interval: normalizeInterval(instance.interval),
       // 块间隔与单块上限：受设备帧长度/最小轮询间隔约束时可在实例上配置，透传给采集层
       ...(instance.blockGap != null ? { blockGap: instance.blockGap } : {}),
+      // 厂商自定义异常码字典：随连接下发给传输层，把 0x0C 等非标准码翻译成该设备专属提示
+      ...(type.exceptionHints ? { exceptionHints: type.exceptionHints } : {}),
       blocks: buildReadPlan(points, instance.maxBlock, instance.maxGap),
     }
   }

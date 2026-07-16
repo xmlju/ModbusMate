@@ -1,6 +1,6 @@
 {
   "name": "modbusmate",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "private": true,
   "description": "Modbus 设备调试器 — 支持 Modbus-TCP 与 Modbus-RTU",
   "author": "xmlju",

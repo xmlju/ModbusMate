@@ -9,6 +9,7 @@ const DeviceUI = (() => {
     instances: [],    // [{ id, typeId, name, transport, ...连接参数, interval, iconIdx }]
     running: {},      // id → true/false
     data: {},         // id → blocks（最新采集数据）
+    skipped: {},      // id → 本轮被跳过的读取块（设备当前模式下不可读的地址）
     statuses: {},     // id → 'connected'|'offline'|'disconnected'|'error'
     dashPrev: {},     // id → pointKey → prevDisplay
   }
@@ -161,6 +162,7 @@ const DeviceUI = (() => {
   // ── 事件处理 ──
   function onDeviceData(d) {
     state.data[d.id] = d.blocks
+    state.skipped[d.id] = d.skipped || []
     // 多客户端同步：后端在给这台设备推数据，说明它正在运行；本客户端若还不知道，
     // 补上 running 状态并重绘总览，让未亲自点启动的客户端也能显示数据
     if (!state.running[d.id]) {
@@ -380,7 +382,7 @@ const DeviceUI = (() => {
         state.running[id] = false
         state.statuses[id] = 'disconnected'
       })
-      delete state.running[id]; delete state.statuses[id]; delete state.data[id]
+      delete state.running[id]; delete state.statuses[id]; delete state.data[id]; delete state.skipped[id]
       renderMgrPage(); renderOverviewPage()
     } catch (e) {
       console.error('deleteInstance 异常', e)

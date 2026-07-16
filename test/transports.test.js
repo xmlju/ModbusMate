@@ -1070,7 +1070,8 @@ describe('ModbusTransport 错误友好化', () => {
     [4, '设备故障：从站执行请求时发生不可恢复错误'],
     [5, '设备已确认：正在处理该长耗时命令，请稍后查询结果'],
     [6, '设备忙：从站正在处理其他命令，请稍后重试'],
-    [12, '设备当前状态不允许该操作：多数参数需先关闭逆变/市电充电、切到空闲/关机状态后再写入'],
+    // 非标准码（0x0C=12）为厂商自定义，无设备字典时给中性提示，不套具体厂商规则
+    [12, '厂商自定义异常码（0x0C）：含义因设备而异，请查阅该设备通讯手册'],
   ])('把异常码 %i 转换为中文提示', async (modbusCode, hint) => {
     const client = createFakeClient({
       readHoldingRegisters: vi.fn().mockRejectedValue(Object.assign(new Error('Modbus exception'), { modbusCode })),
@@ -1080,6 +1081,19 @@ describe('ModbusTransport 错误友好化', () => {
 
     await expect(transport.read('holding', 0, 1))
       .rejects.toThrow(`设备返回异常码 ${modbusCode}（${hint}）`)
+  })
+
+  it('厂商自定义异常码优先用设备自带的 exceptionHints 字典', async () => {
+    const client = createFakeClient({
+      readHoldingRegisters: vi.fn().mockRejectedValue(Object.assign(new Error('Modbus exception'), { modbusCode: 12 })),
+    })
+    const transport = new ModbusTransport(() => client)
+    attachClient(transport, client)
+    // 模拟海索 PCS：设备类型随连接配置下发自己的 0x0C 解释
+    transport.params = { exceptionHints: { 12: '设备当前状态不允许该操作：请先切到空闲/关机状态' } }
+
+    await expect(transport.read('holding', 0, 1))
+      .rejects.toThrow('设备返回异常码 12（设备当前状态不允许该操作：请先切到空闲/关机状态）')
   })
 
   it('把 TCP Timed out 转换为网络诊断提示', async () => {

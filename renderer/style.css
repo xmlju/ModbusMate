@@ -329,3 +329,7 @@ td select { padding: 2px 4px; margin-right: 4px; background: var(--surface-2); c
   transition: opacity .2s;
 }
 #appFooter:hover { opacity: 1; color: var(--accent); }
+
+/* ── 设备调试：跳过点位灰显 + 16进制地址标注 ── */
+.dd-skip { color: var(--ink-3); font-style: italic; }
+.dd-hex-addr { color: var(--ink-3); font-size: 11px; }

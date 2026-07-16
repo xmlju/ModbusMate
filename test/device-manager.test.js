@@ -96,6 +96,96 @@ describe('DeviceManager', () => {
     await dm.stopAll()
   })
 
+  it('部分块失败只跳过坏块：好块照常出数并附 skipped，不报 pollError', async () => {
+    // 设备寄存器随工作模式增减：addr=100 的块回"非法地址"，addr=0 的块正常
+    const read = vi.fn().mockImplementation((area, addr) =>
+      addr === 100 ? Promise.reject(new Error('设备返回异常码 2')) : Promise.resolve([1, 2]))
+    const svc = stubService({ read })
+    const dm = new DeviceManager(() => svc)
+    const onData = vi.fn(); const onErr = vi.fn()
+    dm.on('data', onData); dm.on('pollError', onErr)
+    const cfg = { ...CFG, blockGap: 0, blocks: [
+      { area: 'holding', addr: 0, count: 2 },
+      { area: 'holding', addr: 100, count: 2 },
+    ] }
+    await dm.start('dev1', cfg)
+    await vi.advanceTimersByTimeAsync(50)
+
+    expect(onErr).not.toHaveBeenCalled()
+    expect(onData).toHaveBeenCalled()
+    const d = onData.mock.calls[0][0]
+    expect(d.blocks).toHaveLength(1)
+    expect(d.blocks[0].addr).toBe(0)
+    expect(d.skipped).toHaveLength(1)
+    expect(d.skipped[0].addr).toBe(100)
+    expect(d.skipped[0].message).toContain('异常码 2')
+    await dm.stopAll()
+  })
+
+  it('已知坏块下一轮不再重试，避免双倍超时拖慢轮询', async () => {
+    const read = vi.fn().mockImplementation((area, addr) =>
+      addr === 100 ? Promise.reject(new Error('设备返回异常码 2')) : Promise.resolve([1, 2]))
+    const svc = stubService({ read })
+    const dm = new DeviceManager(() => svc)
+    dm.on('data', () => {})
+    const cfg = { ...CFG, blockGap: 0, blocks: [
+      { area: 'holding', addr: 0, count: 2 },
+      { area: 'holding', addr: 100, count: 2 },
+    ] }
+    await dm.start('dev1', cfg)
+    await vi.advanceTimersByTimeAsync(50)
+    // 首轮：好块 1 次 + 坏块 2 次（首失败 + 重试）
+    const firstRoundBadReads = read.mock.calls.filter(c => c[1] === 100).length
+    expect(firstRoundBadReads).toBe(2)
+
+    await vi.advanceTimersByTimeAsync(1000)  // 第二轮
+    // 第二轮：坏块只探测 1 次，不再重试
+    const secondRoundBadReads = read.mock.calls.filter(c => c[1] === 100).length - firstRoundBadReads
+    expect(secondRoundBadReads).toBe(1)
+    await dm.stopAll()
+  })
+
+  it('坏块恢复可读后自动回归数据，不再出现在 skipped 里', async () => {
+    let badAlive = false  // 模拟模式切回：地址重新可读
+    const read = vi.fn().mockImplementation((area, addr) =>
+      addr === 100 && !badAlive ? Promise.reject(new Error('设备返回异常码 2')) : Promise.resolve([7, 8]))
+    const svc = stubService({ read })
+    const dm = new DeviceManager(() => svc)
+    const onData = vi.fn()
+    dm.on('data', onData)
+    const cfg = { ...CFG, blockGap: 0, blocks: [
+      { area: 'holding', addr: 0, count: 2 },
+      { area: 'holding', addr: 100, count: 2 },
+    ] }
+    await dm.start('dev1', cfg)
+    await vi.advanceTimersByTimeAsync(50)
+    expect(onData.mock.calls.at(-1)[0].skipped).toHaveLength(1)
+
+    badAlive = true
+    await vi.advanceTimersByTimeAsync(1000)  // 下一轮探测成功
+    const last = onData.mock.calls.at(-1)[0]
+    expect(last.blocks).toHaveLength(2)
+    expect(last.skipped).toBeUndefined()
+    await dm.stopAll()
+  })
+
+  it('全部块都失败才算整轮失败，走 pollError', async () => {
+    const svc = stubService({ read: vi.fn().mockRejectedValue(new Error('Timed out')) })
+    const dm = new DeviceManager(() => svc)
+    const onData = vi.fn(); const onErr = vi.fn()
+    dm.on('data', onData); dm.on('pollError', onErr)
+    const cfg = { ...CFG, blockGap: 0, blocks: [
+      { area: 'holding', addr: 0, count: 2 },
+      { area: 'holding', addr: 100, count: 2 },
+    ] }
+    await dm.start('dev1', cfg)
+    await vi.advanceTimersByTimeAsync(50)
+    expect(onData).not.toHaveBeenCalled()
+    expect(onErr).toHaveBeenCalled()
+    expect(onErr.mock.calls[0][0].message).toContain('全部 2 个读取块均失败')
+    await dm.stopAll()
+  })
+
   it('start 后按周期推送带实例 id 的数据块', async () => {
     const svc = stubService()
     const dm = new DeviceManager(() => svc)

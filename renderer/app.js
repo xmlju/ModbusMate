@@ -304,8 +304,20 @@ function populateDeviceDebugSel() {
 window.populateDeviceDebugSel = populateDeviceDebugSel
 
 // 计算某点位的原始值/解析值显示字符串
-function ddCellValues(p, slice) {
+// 查该点位是否落在本轮被跳过的读取块里（设备当前模式下不可读），返回后端错误信息或 null
+function ddSkipMessage(id, p) {
+  const sk = DeviceUI.state.skipped && DeviceUI.state.skipped[id]
+  if (!sk || !sk.length) return null
+  const words = DeviceUI.getWords(p.area, p.type)
+  const hit = sk.find(b => b.area === p.area && p.addr >= b.addr && p.addr + words <= b.addr + b.count)
+  return hit ? (hit.message || '该地址在设备当前模式下不可读') : null
+}
+
+function ddCellValues(p, slice, skipMsg) {
   let rawStr = '—', parsedStr = '—'
+  if (!slice && skipMsg) {
+    return { rawStr: '—', parsedStr: '不可读', skipMsg }
+  }
   if (slice) {
     if (p.area === 'coil' || p.area === 'discrete') {
       rawStr = String(slice[0])
@@ -338,12 +350,18 @@ function refreshDdValues(id) {
     const p = type.points[Number(tr.dataset.pidx)]
     if (!p) return
     const slice = ReadPlan.pickValues(blocks, { area: p.area, addr: p.addr, words: DeviceUI.getWords(p.area, p.type) })
-    const { rawStr, parsedStr } = ddCellValues(p, slice)
+    const { rawStr, parsedStr, skipMsg } = ddCellValues(p, slice, ddSkipMessage(id, p))
     const rawCell = tr.querySelector('.dd-raw'); const parsedCell = tr.querySelector('.dd-parsed')
     if (rawCell && rawCell.textContent !== rawStr) rawCell.textContent = rawStr
-    if (parsedCell && parsedCell.textContent !== parsedStr) {
-      parsedCell.textContent = parsedStr
-      parsedCell.classList.remove('flash'); void parsedCell.offsetWidth; parsedCell.classList.add('flash')
+    if (parsedCell) {
+      // 跳过状态切换（模式切换导致地址可读性变化）：更新灰显样式与悬浮提示
+      parsedCell.classList.toggle('dd-skip', !!skipMsg)
+      if (skipMsg) parsedCell.title = skipMsg
+      else parsedCell.removeAttribute('title')
+      if (parsedCell.textContent !== parsedStr) {
+        parsedCell.textContent = parsedStr
+        if (!skipMsg) { parsedCell.classList.remove('flash'); void parsedCell.offsetWidth; parsedCell.classList.add('flash') }
+      }
     }
   })
 }
@@ -406,16 +424,18 @@ function renderDebugForDevice(id) {
       const kLabel = p.k !== 1 || p.b !== 0 ? ` ×${p.k}${p.b >= 0 ? `+${p.b}` : p.b}` : ''
       const isReadonly = p.area === 'input' || p.area === 'discrete'
 
-      const { rawStr, parsedStr } = ddCellValues(p, slice)
+      const { rawStr, parsedStr, skipMsg } = ddCellValues(p, slice, ddSkipMessage(id, p))
+      // 地址同时展示 10/16 进制，避免和手册（多为 16 进制）对照时看错
+      const addrHtml = `${dispAddr} <span class="dd-hex-addr">(0x${p.addr.toString(16).toUpperCase()})</span>`
 
       tableHtml += `<tr data-pidx="${idx}">
         <td class="val">${escapeHtml(p.name)}</td>
         <td>${areaLabel}</td>
-        <td class="mono">${dispAddr}</td>
+        <td class="mono">${addrHtml}</td>
         <td>${typeLabel}${kLabel}</td>
         <td class="mono dd-raw">${rawStr}</td>
-        <td class="val dd-parsed">${parsedStr}</td>
-        <td>${isReadonly ? '' : '<button class="btn ghost sm dd-write" data-inst="' + id + '" data-area="' + p.area + '" data-addr="' + p.addr + '" data-type="' + p.type + '" data-order="' + (p.wordOrder || 'AB') + '">写入</button>'}</td>
+        <td class="val dd-parsed${skipMsg ? ' dd-skip' : ''}"${skipMsg ? ` title="${escapeHtml(skipMsg)}"` : ''}>${parsedStr}</td>
+        <td>${isReadonly ? '' : '<button class="btn ghost sm dd-write" data-inst="' + id + '" data-area="' + p.area + '" data-addr="' + p.addr + '" data-type="' + p.type + '" data-order="' + (p.wordOrder || 'AB') + '" data-k="' + (p.k ?? 1) + '" data-b="' + (p.b ?? 0) + '" data-unit="' + escapeHtml(p.unit || '') + '">写入</button>'}</td>
       </tr>`
     })
   }
@@ -436,7 +456,10 @@ function renderDebugForDevice(id) {
       const addr = Number(btn.dataset.addr)
       const type = btn.dataset.type
       const wordOrder = btn.dataset.order
-      openDDWriteModal(instId, area, addr, type, wordOrder)
+      const k = Number(btn.dataset.k) || 1
+      const b = Number(btn.dataset.b) || 0
+      const unit = btn.dataset.unit || ''
+      openDDWriteModal(instId, area, addr, type, wordOrder, k, b, unit)
     })
   })
 }
@@ -444,12 +467,17 @@ function renderDebugForDevice(id) {
 // ── 设备调试页写入弹窗（复用现有弹窗）──
 let ddWriteTarget = null
 
-function openDDWriteModal(instId, area, addr, type, wordOrder) {
-  ddWriteTarget = { instId, area, addr, type, wordOrder }
-  const dispAddr = addr
+function openDDWriteModal(instId, area, addr, type, wordOrder, k = 1, b = 0, unit = '') {
+  ddWriteTarget = { instId, area, addr, type, wordOrder, k, b, unit }
+  const dispAddr = `${addr} (0x${addr.toString(16).toUpperCase()})`
   const isCoil = area === 'coil'
+  const hasTransform = !isCoil && type !== 'hex' && (k !== 1 || b !== 0)
   $('modalTitle').textContent = `写入 ${dispAddr}（${isCoil ? '线圈' : Codec.TYPES[type].label}）`
-  $('modalHint').textContent = isCoil ? '输入 1=ON，0=OFF' : type === 'hex' ? '输入十六进制，如 1A2B' : '输入数值'
+  // 带 k/b 换算的点位：直接输入工程值（如 4 表示 4A），软件自动反算原始寄存器值
+  $('modalHint').textContent = isCoil ? '输入 1=ON，0=OFF'
+    : type === 'hex' ? '输入十六进制，如 1A2B'
+    : hasTransform ? `输入工程值${unit ? `（单位 ${unit}）` : ''}，自动换算为原始值：(输入${b !== 0 ? ` - ${b}` : ''}) ÷ ${k}`
+    : '输入数值'
   $('modalInput').value = ''
   $('modalError').textContent = ''
   $('writeModal').classList.remove('hidden')
@@ -460,13 +488,22 @@ function openDDWriteModal(instId, area, addr, type, wordOrder) {
 
 async function confirmDDWrite() {
   if (!ddWriteTarget) return
-  const { instId, area, addr, type, wordOrder } = ddWriteTarget
+  const { instId, area, addr, type, wordOrder, k = 1, b = 0, unit = '' } = ddWriteTarget
   const raw = $('modalInput').value.trim()
+  const hasTransform = area !== 'coil' && type !== 'hex' && (k !== 1 || b !== 0)
   let words
+  let logValue = raw
   try {
     if (area === 'coil') {
       if (raw !== '0' && raw !== '1') throw new Error('线圈只能写 0 或 1')
       words = [Number(raw)]
+    } else if (hasTransform) {
+      // 用户输入工程值，按 原始值 = (工程值 - b) ÷ k 反算；四舍五入消除浮点误差（如 4/0.1=40.000…01）
+      const eng = Number(raw)
+      if (!Number.isFinite(eng)) throw new Error(`请输入数值（工程值${unit ? `，单位 ${unit}` : ''}）`)
+      const rawNum = Math.round((eng - b) / k)
+      words = Codec.encode(String(rawNum), type, wordOrder)
+      logValue = `${raw}${unit}（原始值 ${rawNum}）`
     } else {
       words = Codec.encode(raw, type, wordOrder)
     }
@@ -475,7 +512,7 @@ async function confirmDDWrite() {
   }
   try {
     await window.api.deviceWrite({ id: instId, area, addr, words })
-    log('info', `写入成功：${instId} ${addr} ← ${raw}`)
+    log('info', `写入成功：${instId} ${addr} ← ${logValue}`)
     closeModal()
   } catch (err) {
     $('modalError').textContent = `写入失败：${cleanErr(err.message)}`

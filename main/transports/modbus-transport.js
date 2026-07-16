@@ -17,16 +17,28 @@ const MAX_READ_COUNT = {
 }
 const MAX_WRITE_REGISTERS = 123
 
-// Modbus 异常码对应的中文现场提示
-const EXCEPTION_HINTS = {
+// 标准 Modbus 异常码（1~11 由规范定义，含义与厂商无关，全设备通用）
+const STANDARD_EXCEPTION_HINTS = {
   1: '非法功能码：设备不支持该操作',
   2: '非法数据地址：设备不存在该地址，请检查起始地址和数量',
   3: '非法数据值：写入值超出范围或格式不被设备接受',
   4: '设备故障：从站执行请求时发生不可恢复错误',
   5: '设备已确认：正在处理该长耗时命令，请稍后查询结果',
   6: '设备忙：从站正在处理其他命令，请稍后重试',
-  // 0x0C（12）为海索 HS-ESS/PCS 等设备的自定义状态码：多数参数需在空闲/关机状态才能写入
-  12: '设备当前状态不允许该操作：多数参数需先关闭逆变/市电充电、切到空闲/关机状态后再写入',
+  8: '存储奇偶校验错误：设备扩展存储区校验失败',
+  10: '网关路径不可用：网关未配置到目标设备的路径',
+  11: '网关目标无响应：网关已转发但目标设备未应答',
+}
+
+// 非标准异常码（0x0C=12 及以上）为厂商自定义，同一码不同厂商含义不同
+// （如 0x0C 海索 PCS="需先关闭逆变"，吉事励直流电源="发生错误/开机禁止"），不能全局写死。
+// 优先用设备类型自带的 exceptionHints 字典（随连接配置下发），查不到给中性提示引导查手册。
+function hintForExceptionCode(code, params) {
+  const custom = params && params.exceptionHints && params.exceptionHints[code]
+  if (custom) return custom
+  if (STANDARD_EXCEPTION_HINTS[code]) return STANDARD_EXCEPTION_HINTS[code]
+  const hex = '0x' + Number(code).toString(16).toUpperCase().padStart(2, '0')
+  return `厂商自定义异常码（${hex}）：含义因设备而异，请查阅该设备通讯手册`
 }
 
 function createFriendlyError(message, err) {
@@ -51,7 +63,7 @@ function isTimeoutError(err) {
 
 function friendly(err, params = {}) {
   if (err?.modbusCode) {
-    const hint = EXCEPTION_HINTS[err.modbusCode] || '未知异常'
+    const hint = hintForExceptionCode(err.modbusCode, params)
     return createFriendlyError(`设备返回异常码 ${err.modbusCode}（${hint}）`, err)
   }
   if (isTimeoutError(err)) {
