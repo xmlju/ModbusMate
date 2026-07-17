@@ -6,6 +6,7 @@ const Poller = require('./poller')
 const DeviceManager = require('./device-manager')
 const { listSerialPorts: defaultListSerialPorts } = require('./serial-ports')
 const { createConfigStore } = require('./config-store')
+const { createLlmService } = require('./llm/llm-service')
 
 const WEB_RUNTIME_CHANNELS = Object.freeze([
   'serial:list',
@@ -21,6 +22,8 @@ const WEB_RUNTIME_CHANNELS = Object.freeze([
   'device:stop',
   'device:write',
   'device:rawFrame',
+  'llm:extractText',
+  'llm:extractPoints',
 ])
 
 function serializableError(error) {
@@ -47,13 +50,14 @@ function serializableError(error) {
 }
 
 class WebRuntime extends EventEmitter {
-  constructor({ service, poller, deviceManager, configStore, listSerialPorts }) {
+  constructor({ service, poller, deviceManager, configStore, listSerialPorts, llmService }) {
     super()
     this.service = service
     this.poller = poller
     this.deviceManager = deviceManager
     this.configStore = configStore
     this.listSerialPorts = listSerialPorts
+    this.llmService = llmService
     this._sourceListeners = []
     this._closing = false
     this._closePromise = null
@@ -96,6 +100,9 @@ class WebRuntime extends EventEmitter {
         this.deviceManager.write(id, area, addr, words),
       'device:rawFrame': ({ id, frameBytes, timeoutMs }) =>
         this.deviceManager.rawFrame(id, frameBytes, timeoutMs),
+      // 与 Electron 端信封一致：成功包 ok:true（Electron 对话框取消时另有 ok:false/canceled）
+      'llm:extractText': async params => ({ ok: true, ...(await this.llmService.extractText(params)) }),
+      'llm:extractPoints': params => this.llmService.extractPoints(params),
     })
 
     this._registerSourceListeners()
@@ -145,6 +152,7 @@ class WebRuntime extends EventEmitter {
       devErrLogged.add(error.id)
       this._forward('device:log', { level: 'error', id: error.id, message: `读取失败：${error.message}` })
     })
+    this._register(this.llmService, 'progress', payload => this._forward('llm:progress', payload))
   }
 
   _forward(channel, payload) {
@@ -192,6 +200,9 @@ function createWebRuntime(options = {}) {
   const configStore = options.configStore ?? createConfigStore(
     options.configFilePath ?? path.join(process.cwd(), 'config.json'),
   )
+  const llmService = options.llmService ?? createLlmService({
+    loadConfig: () => configStore.load(),
+  })
 
   return new WebRuntime({
     service,
@@ -199,6 +210,7 @@ function createWebRuntime(options = {}) {
     deviceManager,
     configStore,
     listSerialPorts: options.listSerialPorts ?? defaultListSerialPorts,
+    llmService,
   })
 }
 

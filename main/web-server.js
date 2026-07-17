@@ -10,6 +10,8 @@ const { createWebRuntime, WEB_RUNTIME_CHANNELS } = require('./web-runtime')
 const LOOPBACK_HOST = '127.0.0.1'
 const DEFAULT_PORT = 8765
 const MAX_BODY_BYTES = 1024 * 1024
+// 文档上传通道单独放宽：base64 后的 .doc 手册可达 ~17 MB（解码后上限由 llm-service 把关）
+const LARGE_BODY_CHANNELS = Object.freeze({ 'llm:extractText': 32 * 1024 * 1024 })
 const DEFAULT_SSE_MAX_BUFFERED_BYTES = 256 * 1024
 const DEFAULT_SHUTDOWN_GRACE_MS = 1000
 const CSP = "default-src 'self'; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'"
@@ -139,12 +141,13 @@ async function resolveStaticFile(rendererRoot, rendererRealRoot, rawUrl) {
   return { realFile, size: stats.size }
 }
 
-function readJsonBody(req) {
+function readJsonBody(req, maxBodyBytes = MAX_BODY_BYTES) {
   return new Promise((resolve, reject) => {
+    const limitLabel = `${Math.floor(maxBodyBytes / 1024 / 1024)} MiB`
     const declared = Number(req.headers['content-length'])
-    if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) {
+    if (Number.isFinite(declared) && declared > maxBodyBytes) {
       req.resume()
-      const error = new Error('请求体超过 1 MiB 限制')
+      const error = new Error(`请求体超过 ${limitLabel} 限制`)
       error.statusCode = 413
       reject(error)
       return
@@ -156,10 +159,10 @@ function readJsonBody(req) {
     req.on('data', chunk => {
       if (settled) return
       size += chunk.length
-      if (size > MAX_BODY_BYTES) {
+      if (size > maxBodyBytes) {
         settled = true
         req.resume()
-        const error = new Error('请求体超过 1 MiB 限制')
+        const error = new Error(`请求体超过 ${limitLabel} 限制`)
         error.statusCode = 413
         reject(error)
         return
@@ -293,7 +296,7 @@ async function startWebServer(options = {}) {
           sendRpcError(res, 415, '请求体必须使用 application/json')
           return
         }
-        const body = await readJsonBody(req)
+        const body = await readJsonBody(req, LARGE_BODY_CHANNELS[channel] ?? MAX_BODY_BYTES)
         if (!body || typeof body !== 'object' || Array.isArray(body) ||
             !Array.isArray(body.args) || Object.keys(body).length !== 1) {
           sendRpcError(res, 400, '请求体必须严格为 {args: [...]}')

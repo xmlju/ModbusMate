@@ -10,6 +10,7 @@ const { listSerialPorts } = require('./serial-ports')
 const { createSerialListHandler } = require('./serial-ipc')
 const { createMainIpcHandlers } = require('./ipc-handlers')
 const { registerTrustedIpcHandlers } = require('./ipc-security')
+const { createLlmService } = require('./llm/llm-service')
 
 const service = new ModbusService()
 const poller = new Poller(service)
@@ -35,6 +36,9 @@ process.on('uncaughtException', err => {
 const configFile = () => path.join(app.getPath('userData'), 'config.json')
 function loadConfig() { try { return JSON.parse(fs.readFileSync(configFile(), 'utf8')) } catch { return {} } }
 function saveConfig(cfg) { fs.writeFileSync(configFile(), JSON.stringify(cfg)) }
+
+// ── LLM 点表生成服务（配置从 config.json 的 llm 字段读取）──
+const llmService = createLlmService({ loadConfig })
 
 function createWindow() {
   win = new BrowserWindow({
@@ -63,6 +67,7 @@ function registerIpc() {
     poller,
     deviceManager,
     serialListHandler,
+    llmService,
     loadConfig,
     saveConfig,
     dialog,
@@ -78,6 +83,8 @@ function registerIpc() {
     getWindow: () => win,
     expectedUrl: appEntryUrl,
   })
+
+  llmService.on('progress', p => send('llm:progress', p))
 
   deviceManager.on('data', d => send('device:data', d))
   deviceManager.on('status', s => send('device:status', s))

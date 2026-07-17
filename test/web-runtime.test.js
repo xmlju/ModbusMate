@@ -35,7 +35,11 @@ function createDependencies() {
     save: vi.fn(config => ({ ok: true, config })),
   }
   const listSerialPorts = vi.fn(async () => [{ path: 'COM3' }])
-  return { service, poller, deviceManager, configStore, listSerialPorts }
+  const llmService = Object.assign(new EventEmitter(), {
+    extractText: vi.fn(async () => ({ docId: 'doc-1', fileName: '手册.doc', charCount: 300, preview: '预览', format: 'doc' })),
+    extractPoints: vi.fn(async () => ({ points: [], stats: { totalTokens: 100 } })),
+  })
+  return { service, poller, deviceManager, configStore, listSerialPorts, llmService }
 }
 
 describe('Web Modbus 运行时', () => {
@@ -56,6 +60,8 @@ describe('Web Modbus 运行时', () => {
       'device:stop',
       'device:write',
       'device:rawFrame',
+      'llm:extractText',
+      'llm:extractPoints',
     ])
     await expect(runtime.invoke('points:import')).rejects.toThrow('不支持的运行时通道：points:import')
     await runtime.close()
@@ -101,6 +107,38 @@ describe('Web Modbus 运行时', () => {
     await expect(runtime.invoke('device:stop', 'ems')).resolves.toBe('device-stop')
     await expect(runtime.invoke('device:write', { id: 'ems', ...write })).resolves.toBe('device-write')
     expect(deps.deviceManager.write).toHaveBeenCalledWith('ems', 'holding', 10, [1, 2])
+    await runtime.close()
+  })
+
+  it('LLM 通道委托 llmService 并保持 ok 信封语义', async () => {
+    const deps = createDependencies()
+    const runtime = createWebRuntime(deps)
+    const upload = { fileName: '手册.doc', dataBase64: 'aGk=' }
+
+    await expect(runtime.invoke('llm:extractText', upload)).resolves.toEqual({
+      ok: true, docId: 'doc-1', fileName: '手册.doc', charCount: 300, preview: '预览', format: 'doc',
+    })
+    expect(deps.llmService.extractText).toHaveBeenCalledWith(upload)
+
+    await expect(runtime.invoke('llm:extractPoints', { docId: 'doc-1' }))
+      .resolves.toEqual({ points: [], stats: { totalTokens: 100 } })
+    expect(deps.llmService.extractPoints).toHaveBeenCalledWith({ docId: 'doc-1' })
+    await runtime.close()
+  })
+
+  it('转发 LLM 进度事件，关闭后不再转发', async () => {
+    const deps = createDependencies()
+    const runtime = createWebRuntime(deps)
+    const events = []
+    runtime.on('event', event => events.push(event))
+
+    const progress = { docId: 'doc-1', segment: 1, totalSegments: 3, accumulatedPoints: 12, accumulatedTokens: 800 }
+    deps.llmService.emit('progress', progress)
+    expect(events).toEqual([{ channel: 'llm:progress', payload: progress }])
+
+    await runtime.close()
+    deps.llmService.emit('progress', { docId: 'doc-1', segment: 2 })
+    expect(events).toHaveLength(1)
     await runtime.close()
   })
 

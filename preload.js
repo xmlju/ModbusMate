@@ -34,6 +34,11 @@ contextBridge.exposeInMainWorld('api', {
   onDeviceStatus: fn => ipcRenderer.on('device:status', (_e, s) => fn(s)),
   onDeviceLog:    fn => ipcRenderer.on('device:log',    (_e, l) => fn(l)),
 
+  // LLM 点表生成
+  llmExtractText:   p  => ipcRenderer.invoke('llm:extractText', p),
+  llmExtractPoints: p  => ipcRenderer.invoke('llm:extractPoints', p),
+  onLlmProgress:    fn => ipcRenderer.on('llm:progress', (_e, p) => fn(p)),
+
   // 点表导入导出
   exportPoints: p => ipcRenderer.invoke('points:export', p),
   importPoints: () => ipcRenderer.invoke('points:import'),

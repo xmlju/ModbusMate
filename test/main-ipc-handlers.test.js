@@ -34,11 +34,16 @@ function createDependencies() {
     extname: vi.fn(value => value.endsWith('.jpg') ? '.jpg' : '.png'),
   }
   const win = { id: 'window' }
+  const llmService = {
+    extractText: vi.fn(async () => ({ docId: 'doc-1', fileName: '手册.doc', charCount: 300, preview: '预览', format: 'doc' })),
+    extractPoints: vi.fn(async () => ({ points: [], stats: { totalTokens: 100 } })),
+  }
   return {
     service,
     poller,
     deviceManager,
     serialListHandler: vi.fn(async () => ({ ok: true, ports: [] })),
+    llmService,
     loadConfig: vi.fn(() => ({ saved: true })),
     saveConfig: vi.fn(),
     dialog: {
@@ -114,5 +119,50 @@ describe('主进程 IPC 业务处理器', () => {
       dependencies.getWindow(),
       expect.objectContaining({ defaultPath: 'points.json' }),
     )
+  })
+
+  it('LLM 抽文本：无参时弹文档对话框，取消返回 canceled', async () => {
+    const dependencies = createDependencies()
+    const handlers = createMainIpcHandlers(dependencies)
+
+    await expect(handlers['llm:extractText']({}, undefined))
+      .resolves.toEqual({ ok: false, canceled: true })
+    expect(dependencies.dialog.showOpenDialog).toHaveBeenCalledWith(
+      dependencies.getWindow(),
+      expect.objectContaining({
+        filters: [{ name: '设备通讯手册', extensions: ['pdf', 'docx', 'doc', 'txt'] }],
+      }),
+    )
+    expect(dependencies.llmService.extractText).not.toHaveBeenCalled()
+  })
+
+  it('LLM 抽文本：对话框选中文件后委托 llmService 并包 ok 信封', async () => {
+    const dependencies = createDependencies()
+    dependencies.dialog.showOpenDialog = vi.fn(async () => ({ canceled: false, filePaths: ['/docs/手册.doc'] }))
+    const handlers = createMainIpcHandlers(dependencies)
+
+    await expect(handlers['llm:extractText']({}, undefined)).resolves.toEqual({
+      ok: true, docId: 'doc-1', fileName: '手册.doc', charCount: 300, preview: '预览', format: 'doc',
+    })
+    expect(dependencies.llmService.extractText).toHaveBeenCalledWith({ filePath: '/docs/手册.doc' })
+  })
+
+  it('LLM 抽文本：显式传参时不弹对话框直接委托', async () => {
+    const dependencies = createDependencies()
+    const handlers = createMainIpcHandlers(dependencies)
+    const upload = { fileName: '手册.pdf', dataBase64: 'aGk=' }
+
+    await expect(handlers['llm:extractText']({}, upload)).resolves.toMatchObject({ ok: true })
+    expect(dependencies.dialog.showOpenDialog).not.toHaveBeenCalled()
+    expect(dependencies.llmService.extractText).toHaveBeenCalledWith(upload)
+  })
+
+  it('LLM 点位抽取直接委托 llmService', async () => {
+    const dependencies = createDependencies()
+    const handlers = createMainIpcHandlers(dependencies)
+
+    await expect(handlers['llm:extractPoints']({}, { docId: 'doc-1' }))
+      .resolves.toEqual({ points: [], stats: { totalTokens: 100 } })
+    expect(dependencies.llmService.extractPoints).toHaveBeenCalledWith({ docId: 'doc-1' })
   })
 })

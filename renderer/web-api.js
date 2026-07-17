@@ -16,6 +16,8 @@
     deviceStop: ['device:stop', 1],
     deviceWrite: ['device:write', 1],
     deviceRawFrame: ['device:rawFrame', 1],
+    llmExtractText: ['llm:extractText', 1],
+    llmExtractPoints: ['llm:extractPoints', 1],
   })
   const EVENT_METHODS = Object.freeze({
     onData: 'modbus:data',
@@ -24,6 +26,12 @@
     onDeviceData: 'device:data',
     onDeviceStatus: 'device:status',
     onDeviceLog: 'device:log',
+    onLlmProgress: 'llm:progress',
+  })
+  // 长任务通道的独立超时：文档上传/解析可到几分钟，LLM 分段抽取可到十分钟
+  const RPC_TIMEOUTS = Object.freeze({
+    'llm:extractText': 120000,
+    'llm:extractPoints': 600000,
   })
   const MAX_TOKEN_LENGTH = 256
   const MAX_IMPORT_BYTES = 1024 * 1024
@@ -188,7 +196,8 @@
 
     async function invoke(channel, args) {
       const controller = new AbortControllerRef()
-      const timer = setTimeout(() => controller.abort(), timeoutMs)
+      const channelTimeoutMs = RPC_TIMEOUTS[channel] ?? timeoutMs
+      const timer = setTimeout(() => controller.abort(), channelTimeoutMs)
       let reply
       let envelope
       try {
@@ -202,7 +211,7 @@
           })
         } catch (cause) {
           if (cause?.name === 'AbortError' || controller.signal.aborted) {
-            throw new Error(`本地调试服务请求超时（${timeoutMs}ms），请检查服务是否仍在运行。`, { cause })
+            throw new Error(`本地调试服务请求超时（${channelTimeoutMs}ms），请检查服务是否仍在运行。`, { cause })
           }
           throw new Error('无法连接本地调试服务，请确认 npm run web 仍在运行并从其完整地址打开页面。', { cause })
         }
@@ -223,7 +232,7 @@
           responseText = await reply.text()
         } catch (cause) {
           if (cause?.name === 'AbortError' || controller.signal.aborted) {
-            throw new Error(`本地调试服务请求超时（${timeoutMs}ms），请检查服务是否仍在运行。`, { cause })
+            throw new Error(`本地调试服务请求超时（${channelTimeoutMs}ms），请检查服务是否仍在运行。`, { cause })
           }
           throw new Error(`读取本地调试服务响应失败（HTTP ${reply.status}）。`, { cause })
         }

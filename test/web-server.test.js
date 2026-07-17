@@ -288,6 +288,29 @@ describe('安全本地 Web 服务', () => {
     await close(app)
   })
 
+  it('llm:extractText 通道放宽请求体限制以支持文档上传', async () => {
+    const runtime = createRuntime()
+    const app = await start({ runtime })
+    // 超过普通 1 MiB 限制、但在 32 MiB 上传限制内
+    const payload = { fileName: '手册.doc', dataBase64: 'A'.repeat(2 * 1024 * 1024) }
+    const body = JSON.stringify({ args: [payload] })
+    const response = await request(app, {
+      method: 'POST', pathname: '/api/invoke/llm%3AextractText',
+      headers: rpcHeaders(app, { 'content-length': Buffer.byteLength(body) }), body,
+    })
+    expect(response.status).toBe(200)
+    expect(runtime.invoke).toHaveBeenCalledWith('llm:extractText', payload)
+
+    // 超过 32 MiB 仍拒绝（用 content-length 声明触发，不真传 32MB）
+    const oversize = await request(app, {
+      method: 'POST', pathname: '/api/invoke/llm%3AextractText',
+      headers: rpcHeaders(app, { 'content-length': 33 * 1024 * 1024 }), body: '{"args":[{}]}',
+    })
+    expect(oversize.status).toBe(413)
+    expect(JSON.parse(oversize.text).error.message).toContain('32 MiB')
+    await close(app)
+  })
+
   it.each(['not:registered', 'toString', 'constructor', '__proto__', 'config%2Fload', '%E0%A4%A'])(
     '未知或非法 RPC 通道返回 404：%s',
     async channel => {

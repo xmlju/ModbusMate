@@ -6,6 +6,7 @@ function createMainIpcHandlers({
   poller,
   deviceManager,
   serialListHandler,
+  llmService,
   loadConfig,
   saveConfig,
   dialog,
@@ -46,6 +47,21 @@ function createMainIpcHandlers({
       deviceManager.write(id, area, addr, words),
     'device:rawFrame': (_event, { id, frameBytes, timeoutMs }) =>
       deviceManager.rawFrame(id, frameBytes, timeoutMs),
+
+    // LLM 点表生成：未传文件参数时弹系统对话框选文档（Electron 专属路径）
+    'llm:extractText': async (_event, params) => {
+      let target = params
+      if (!target?.filePath && !target?.dataBase64) {
+        const { canceled, filePaths } = await dialog.showOpenDialog(getWindow(), {
+          filters: [{ name: '设备通讯手册', extensions: ['pdf', 'docx', 'doc', 'txt'] }],
+          properties: ['openFile'],
+        })
+        if (canceled || !filePaths?.[0]) return { ok: false, canceled: true }
+        target = { filePath: filePaths[0] }
+      }
+      return { ok: true, ...(await llmService.extractText(target)) }
+    },
+    'llm:extractPoints': (_event, params) => llmService.extractPoints(params),
 
     'points:export': async (_event, { defaultName, json }) => {
       const { canceled, filePath } = await dialog.showSaveDialog(getWindow(), {
