@@ -231,6 +231,7 @@
           <h1>⚙️ 类型/实例管理</h1>
           <button class="btn ghost" id="mgrRefreshBtn">🔄 刷新</button>
           <button class="btn" id="mgrAddTypeBtn">＋ 新建类型</button>
+          <button class="btn" id="mgrLlmWizardBtn">🤖 AI 生成点表</button>
           <button class="btn ghost" id="mgrAddInstBtn">＋ 添加设备</button>
         </div>
         <div class="mgr-page">
@@ -256,6 +257,104 @@
 
   <!-- 开发者署名 -->
   <div id="appFooter" title="点击联系开发者">by yaomh</div>
+
+  <!-- ── LLM 向导弹窗 ── -->
+  <div id="llmWizardModal" class="overlay hidden" role="dialog" aria-modal="true">
+    <div class="modal-box" style="width:780px;max-width:95vw">
+      <button class="modal-close" id="llmWizardClose" aria-label="关闭">×</button>
+      <h3 id="llmWizardTitle">AI 生成点表</h3>
+      
+      <!-- Step indicators -->
+      <div class="llm-steps" id="llmSteps">
+        <span class="llm-step active" data-step="1">1 选择文件</span>
+        <span class="llm-step-arrow">→</span>
+        <span class="llm-step" data-step="2">2 检查设置</span>
+        <span class="llm-step-arrow">→</span>
+        <span class="llm-step" data-step="3">3 文档解析</span>
+        <span class="llm-step-arrow">→</span>
+        <span class="llm-step" data-step="4">4 预览保存</span>
+      </div>
+
+      <!-- Step 1: File selection -->
+      <div class="llm-pane" id="llmPane1">
+        <div class="llm-upload-area" id="llmUploadArea">
+          <p>📄 拖放文档到此处，或点击选择文件</p>
+          <p class="hint">支持 PDF / DOCX / DOC / TXT；上限 20 MiB</p>
+          <input type="file" id="llmFileInput" accept=".pdf,.docx,.doc,.txt" style="display:none">
+        </div>
+        <div id="llmFilePreview" class="hidden">
+          <p>✅ <strong id="llmFileName"></strong></p>
+          <p class="hint">字数：<span id="llmCharCount">—</span> · 格式：<span id="llmFileFormat">—</span></p>
+          <p class="hint" id="llmTextPreview" style="max-height:80px;overflow:hidden;text-overflow:ellipsis;white-space:pre-wrap;font-family:var(--mono);font-size:11px"></p>
+          <button class="btn ghost sm" id="llmFileReselect">重新选择</button>
+        </div>
+        <div id="llmUploadError" class="error-text"></div>
+      </div>
+
+      <!-- Step 2: Settings -->
+      <div class="llm-pane hidden" id="llmPane2">
+        <div class="llm-settings-form">
+          <div class="llm-setting-row">
+            <label>API 地址 (baseURL)</label>
+            <input id="llmBaseUrl" type="text" placeholder="https://api.deepseek.com" autocomplete="off">
+          </div>
+          <div class="llm-setting-row">
+            <label>API Key</label>
+            <input id="llmApiKey" type="password" placeholder="sk-your-key-here" autocomplete="off">
+            <button class="btn ghost sm" id="llmToggleKey" type="button">👁 显示</button>
+          </div>
+          <div class="llm-setting-row">
+            <label>模型</label>
+            <input id="llmModel" type="text" placeholder="deepseek-v4-flash（便宜）/ deepseek-v4-pro（效果好）" autocomplete="off">
+          </div>
+        </div>
+        <div style="margin-top:10px;display:flex;align-items:center;gap:10px">
+          <button class="btn ghost sm" id="llmTestBtn" type="button">🔌 测试连接</button>
+          <span id="llmTestResult" class="hint"></span>
+        </div>
+        <p class="hint" style="margin-top:12px">⚠️ Key 明文保存在本机配置文件，请勿在共用电脑上保存</p>
+        <div id="llmSettingsError" class="error-text"></div>
+      </div>
+
+      <!-- Step 3: Parsing -->
+      <div class="llm-pane hidden" id="llmPane3">
+        <div id="llmParseIdle">
+          <p>已就绪，点击下方按钮开始解析</p>
+          <p class="hint" id="llmDocInfo"></p>
+        </div>
+        <div id="llmParseProgress" class="hidden">
+          <div class="llm-progress-bar"><div id="llmProgressFill"></div></div>
+          <p>第 <span id="llmSegCurrent">—</span> / <span id="llmSegTotal">—</span> 段</p>
+          <p class="hint">累计点位：<span id="llmAccumPoints">0</span> · 已用 token：<span id="llmAccumTokens">0</span> · 预估费用：<span id="llmEstCost">¥0.00</span></p>
+        </div>
+        <div id="llmParseError" class="error-text"></div>
+        <button class="btn ghost sm hidden" id="llmRetryBtn" style="margin-top:8px">重试</button>
+      </div>
+
+      <!-- Step 4: Preview & Save -->
+      <div class="llm-pane hidden" id="llmPane4">
+        <div id="llmPreviewStats"></div>
+        <div id="llmAmbiguityWarning" class="hidden" style="background:var(--accent-bg);color:var(--status-warning);padding:8px 12px;border-radius:6px;margin:8px 0;font-size:12px"></div>
+        <div id="llmDroppedHint" class="hidden hint" style="color:var(--status-critical)"></div>
+        <div class="llm-preview-table-wrap" style="max-height:300px;overflow:auto;margin:8px 0">
+          <table><thead><tr><th>名称</th><th>区域</th><th>地址</th><th>类型</th><th>系数k</th><th>偏移b</th><th>单位</th></tr></thead>
+            <tbody id="llmPreviewTbody"></tbody>
+          </table>
+        </div>
+        <div id="llmSaveError" class="error-text"></div>
+      </div>
+
+      <!-- Navigation buttons -->
+      <div class="modal-btns" style="justify-content:space-between">
+        <button class="btn secondary" id="llmBackBtn" style="flex:0">← 上一步</button>
+        <div>
+          <button class="btn ghost sm" id="llmVerifyBtn" disabled title="实测校验功能即将上线" style="margin-right:8px">🔬 实测校验（即将上线）</button>
+          <button class="btn secondary" id="llmCancelBtn" style="flex:0">取消</button>
+          <button class="btn" id="llmNextBtn" style="flex:0">下一步 →</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- ── 弹窗（全局共用） ── -->
 
@@ -391,6 +490,9 @@
   <script src="device-config.js"></script>
   <script src="raw-frame.js"></script>
   <script src="device.js"></script>
+  <script src="llm-utils.js"></script>
+  <script src="llm-wizard-state.js"></script>
+  <script src="llm-wizard-ui.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

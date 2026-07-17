@@ -16,6 +16,7 @@ const IPC_CHANNELS = Object.freeze([
   'device:rawFrame',
   'llm:extractText',
   'llm:extractPoints',
+  'llm:testConnection',
   'points:export',
   'points:import',
   'copy-image',

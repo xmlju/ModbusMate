@@ -24,6 +24,7 @@ const WEB_RUNTIME_CHANNELS = Object.freeze([
   'device:rawFrame',
   'llm:extractText',
   'llm:extractPoints',
+  'llm:testConnection',
 ])
 
 function serializableError(error) {
@@ -103,6 +104,7 @@ class WebRuntime extends EventEmitter {
       // 与 Electron 端信封一致：成功包 ok:true（Electron 对话框取消时另有 ok:false/canceled）
       'llm:extractText': async params => ({ ok: true, ...(await this.llmService.extractText(params)) }),
       'llm:extractPoints': params => this.llmService.extractPoints(params),
+      'llm:testConnection': params => this.llmService.testConnection(params),
     })
 
     this._registerSourceListeners()

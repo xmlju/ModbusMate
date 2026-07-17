@@ -111,11 +111,61 @@ describe('LLM 点表生成服务', () => {
         .rejects.toThrow('上限')
     })
 
+    it('拒绝非法 base64（回归：前端误传 "[object ArrayBuffer]" 字面量）', async () => {
+      const { service, extractFromFile } = createFixture()
+
+      await expect(service.extractText({ fileName: 'a.doc', dataBase64: '[object ArrayBuffer]' }))
+        .rejects.toThrow('不是有效的 base64 编码')
+      expect(extractFromFile).not.toHaveBeenCalled()
+    })
+
     it('拒绝空内容与缺参调用', async () => {
       const { service } = createFixture()
 
       await expect(service.extractText({})).rejects.toThrow('缺少必要参数')
       await expect(service.extractText()).rejects.toThrow('缺少必要参数')
+    })
+  })
+
+  describe('testConnection', () => {
+    it('表单参数优先于已存配置，返回模型/耗时/token', async () => {
+      const { service, createProvider, provider } = createFixture()
+      provider.chatCompletion.mockResolvedValue({
+        content: 'OK',
+        usage: { promptTokens: 10, completionTokens: 2, totalTokens: 12 },
+      })
+
+      const r = await service.testConnection({ baseURL: 'https://api.other.com', apiKey: 'sk-form', model: 'deepseek-v4-pro' })
+
+      expect(createProvider).toHaveBeenCalledWith({
+        baseURL: 'https://api.other.com',
+        apiKey: 'sk-form',
+        model: 'deepseek-v4-pro',
+        timeoutMs: 15000,
+      })
+      expect(r).toEqual({ ok: true, model: 'deepseek-v4-pro', latencyMs: expect.any(Number), totalTokens: 12 })
+    })
+
+    it('参数缺省时回落到已存配置', async () => {
+      const { service, createProvider, provider } = createFixture()
+      provider.chatCompletion.mockResolvedValue({ content: 'OK', usage: { totalTokens: 5 } })
+
+      await service.testConnection({})
+
+      expect(createProvider).toHaveBeenCalledWith(expect.objectContaining({
+        baseURL: 'https://api.deepseek.com',
+        apiKey: 'sk-test',
+      }))
+    })
+
+    it('缺 baseURL / Key 时给中文提示，API 错误原文透传', async () => {
+      const { service } = createFixture({ loadConfig: () => ({}) })
+      await expect(service.testConnection({})).rejects.toThrow('请先填写 baseURL')
+      await expect(service.testConnection({ baseURL: 'https://x.com' })).rejects.toThrow('请先填写 API Key')
+
+      const bad = createFixture()
+      bad.provider.chatCompletion.mockRejectedValue(new Error('LLM API 错误 (400): 模型名不存在'))
+      await expect(bad.service.testConnection({})).rejects.toThrow('LLM API 错误 (400)')
     })
   })
 

@@ -4,6 +4,8 @@
 const DEFAULT_TIMEOUT_MS = 60000
 const MAX_RETRIES = 2
 const RETRY_BASE_DELAY_MS = 1000
+/** DeepSeek 2026 命名：v4-pro / v4-flash（旧名 deepseek-chat 已下线） */
+const DEFAULT_MODEL = 'deepseek-v4-flash'
 
 /**
  * 创建 OpenAI 兼容的 LLM Provider
@@ -13,7 +15,7 @@ const RETRY_BASE_DELAY_MS = 1000
 function createProvider(config) {
   const baseURL = (config.baseURL || '').replace(/\/+$/, '')
   const apiKey = config.apiKey || ''
-  const model = config.model || 'deepseek-chat'
+  const model = config.model || DEFAULT_MODEL
   const timeoutMs = config.timeoutMs || DEFAULT_TIMEOUT_MS
 
   if (!baseURL) throw new Error('缺少 baseURL 配置')
@@ -104,4 +106,4 @@ function createProvider(config) {
   return { chatCompletion }
 }
 
-module.exports = { createProvider, DEFAULT_TIMEOUT_MS, MAX_RETRIES }
+module.exports = { createProvider, DEFAULT_TIMEOUT_MS, MAX_RETRIES, DEFAULT_MODEL }

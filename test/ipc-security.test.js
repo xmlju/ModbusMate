@@ -111,6 +111,7 @@ describe('高权限 IPC 统一注册', () => {
       'device:rawFrame',
       'llm:extractText',
       'llm:extractPoints',
+      'llm:testConnection',
       'points:export',
       'points:import',
       'copy-image',

@@ -153,6 +153,7 @@ async function startApp() {
   window._appLogFn = (level, msg) => log(level, msg)
   DeviceUI.loadFromConfig(cfg)
   DeviceUI.init()
+  LlmWizardUI.init()
 
   // 关闭弹窗
   $('typeCancelBtn').addEventListener('click', () => {

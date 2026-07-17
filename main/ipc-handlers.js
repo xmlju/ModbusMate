@@ -62,6 +62,7 @@ function createMainIpcHandlers({
       return { ok: true, ...(await llmService.extractText(target)) }
     },
     'llm:extractPoints': (_event, params) => llmService.extractPoints(params),
+    'llm:testConnection': (_event, params) => llmService.testConnection(params),
 
     'points:export': async (_event, { defaultName, json }) => {
       const { canceled, filePath } = await dialog.showSaveDialog(getWindow(), {

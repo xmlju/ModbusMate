@@ -8,7 +8,7 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const { extractFromFile } = require('./text-extractor')
-const { createProvider } = require('./provider')
+const { createProvider, DEFAULT_MODEL } = require('./provider')
 const { extractPoints } = require('./point-extractor')
 
 /** 网页模式上传文件的解码后大小上限（实测 .doc 手册可达 13 MB） */
@@ -54,12 +54,13 @@ class LlmService extends EventEmitter {
       if (!ALLOWED_EXTENSIONS.includes(ext)) {
         throw new Error(`不支持的文件格式: ${ext || '(无扩展名)'}，仅支持 ${ALLOWED_EXTENSIONS.join('/')}`)
       }
-      let buffer
-      try {
-        buffer = Buffer.from(dataBase64, 'base64')
-      } catch (cause) {
-        throw new Error('上传的文件内容不是有效的 base64 编码', { cause })
+      // Node 的 base64 解码会静默忽略非法字符（如 "[object ArrayBuffer]" 也能解出乱字节），
+      // 必须先显式校验字符集，否则前端传错类型时报错会误导为"文件格式不支持"
+      const compact = dataBase64.replace(/\s/g, '')
+      if (!/^[A-Za-z0-9+/]+={0,2}$/.test(compact)) {
+        throw new Error('上传的文件内容不是有效的 base64 编码（前端传参类型错误？）')
       }
+      const buffer = Buffer.from(compact, 'base64')
       if (buffer.length === 0) throw new Error('上传的文件内容为空')
       if (buffer.length > MAX_UPLOAD_BYTES) {
         throw new Error(`上传文件超过 ${Math.floor(MAX_UPLOAD_BYTES / 1024 / 1024)} MiB 上限，请压缩或拆分文档`)
@@ -93,6 +94,37 @@ class LlmService extends EventEmitter {
       if (cleanupPath) {
         try { fs.unlinkSync(cleanupPath) } catch { /* 临时文件清理失败不影响主流程 */ }
       }
+    }
+  }
+
+  /**
+   * 测试 LLM 连接：发一条最小请求验证 baseURL / API Key / 模型名是否可用。
+   * 参数里给了就用参数（设置表单未保存也能先测），缺省项回落到已存配置
+   * @param {{ baseURL?: string, apiKey?: string, model?: string }} [params]
+   * @returns {Promise<{ ok: true, model: string, latencyMs: number, totalTokens: number }>}
+   */
+  async testConnection(params) {
+    const stored = (await this._loadConfig())?.llm || {}
+    const given = params || {}
+    const baseURL = String(given.baseURL || stored.baseURL || '').trim()
+    const apiKey = String(given.apiKey || stored.apiKey || '').trim()
+    const model = String(given.model || stored.model || '').trim()
+
+    if (!baseURL) throw new Error('请先填写 baseURL（如 https://api.deepseek.com）')
+    if (!apiKey) throw new Error('请先填写 API Key')
+
+    // 测试用较短超时，避免用户在设置页干等一分钟
+    const provider = this._createProvider({ baseURL, apiKey, model, timeoutMs: 15000 })
+    const started = Date.now()
+    const result = await provider.chatCompletion({
+      messages: [{ role: 'user', content: '连通性测试，请只回复：OK' }],
+      temperature: 0,
+    })
+    return {
+      ok: true,
+      model: model || DEFAULT_MODEL,
+      latencyMs: Date.now() - started,
+      totalTokens: result.usage.totalTokens,
     }
   }
 

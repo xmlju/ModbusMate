@@ -368,3 +368,27 @@ td select { padding: 2px 4px; margin-right: 4px; background: var(--surface-2); c
 .nav.collapsed .brand { display: none; }
 .nav.collapsed .nav-text { display: none; }
 .nav.collapsed .nav-item, .nav.collapsed .nav-collapse { justify-content: center; padding: 8px; }
+
+/* ── LLM 向导弹窗 ── */
+.llm-steps { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 16px 0 20px; }
+.llm-step { padding: 4px 12px; border-radius: 999px; font-size: 12px; color: var(--ink-3); background: var(--surface-2); border: 1px solid var(--border); white-space: nowrap; }
+.llm-step.active { color: var(--ink-1); background: var(--accent); border-color: var(--accent); }
+.llm-step.done { color: var(--ink-2); border-color: var(--status-good); }
+.llm-step-arrow { color: var(--ink-3); font-size: 14px; }
+.llm-pane { text-align: left; min-height: 200px; }
+.llm-upload-area { border: 2px dashed var(--border); border-radius: 8px; padding: 40px 20px; text-align: center; cursor: pointer; transition: border-color .2s; }
+.llm-upload-area:hover { border-color: var(--accent); background: var(--accent-bg); }
+.llm-upload-area p { color: var(--ink-1); font-size: 14px; }
+.llm-upload-area .hint { color: var(--ink-3); font-size: 12px; margin-top: 6px; }
+.llm-settings-form { text-align: left; }
+.llm-setting-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.llm-setting-row label { width: 140px; flex-shrink: 0; color: var(--ink-2); font-size: 13px; text-align: right; }
+.llm-setting-row input { flex: 1; padding: 6px 10px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-2); color: var(--ink-1); font-size: 13px; min-width: 0; }
+.llm-progress-bar { height: 12px; background: var(--surface-2); border-radius: 6px; overflow: hidden; margin: 10px 0; }
+.llm-progress-bar div { height: 100%; background: var(--accent); border-radius: 6px; transition: width .3s; width: 0; }
+.llm-preview-table-wrap table { width: 100%; border-collapse: collapse; }
+.llm-preview-table-wrap th, .llm-preview-table-wrap td { padding: 4px 8px; border: 1px solid var(--border); font-size: 12px; text-align: left; white-space: nowrap; }
+.llm-preview-table-wrap th { background: var(--surface-2); position: sticky; top: 0; color: var(--ink-2); }
+.llm-preview-stats { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+.llm-stat-badge { padding: 4px 10px; border-radius: 6px; background: var(--surface-2); border: 1px solid var(--border); font-size: 12px; color: var(--ink-2); }
+.llm-stat-badge strong { color: var(--ink-1); }

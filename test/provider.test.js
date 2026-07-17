@@ -17,7 +17,7 @@ describe('provider — createProvider', () => {
         .toThrow('缺少 apiKey 配置')
     })
 
-    it('默认 model 为 deepseek-chat', () => {
+    it('未配置 model 时使用默认值', () => {
       const p = createProvider({ baseURL: 'https://api.deepseek.com', apiKey: 'sk-xxx' })
       expect(typeof p.chatCompletion).toBe('function')
     })
@@ -88,7 +88,7 @@ describe('provider — createProvider', () => {
         responseFormat: { type: 'json_object' },
       })
 
-      expect(requestBody.model).toBe('deepseek-chat')
+      expect(requestBody.model).toBe('deepseek-v4-flash')  // 未显式配置时的默认 model
       expect(requestBody.messages).toEqual([{ role: 'user', content: 'test' }])
       expect(requestBody.temperature).toBe(0)
       expect(requestBody.response_format).toEqual({ type: 'json_object' })

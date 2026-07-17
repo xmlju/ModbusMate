@@ -37,6 +37,7 @@ function createDependencies() {
   const llmService = {
     extractText: vi.fn(async () => ({ docId: 'doc-1', fileName: '手册.doc', charCount: 300, preview: '预览', format: 'doc' })),
     extractPoints: vi.fn(async () => ({ points: [], stats: { totalTokens: 100 } })),
+    testConnection: vi.fn(async () => ({ ok: true, model: 'deepseek-v4-flash', latencyMs: 8, totalTokens: 12 })),
   }
   return {
     service,

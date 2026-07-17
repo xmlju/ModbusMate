@@ -3,7 +3,7 @@ export const API_KEYS = [
   'loadConfig', 'saveConfig', 'onData', 'onStatus', 'onLog',
   'deviceStart', 'deviceStop', 'deviceWrite', 'onDeviceData', 'onDeviceStatus',
   'onDeviceLog', 'deviceRawFrame', 'rawRequest', 'exportPoints', 'importPoints', 'copyImage', 'readImage', 'saveImage',
-  'llmExtractText', 'llmExtractPoints', 'onLlmProgress',
+  'llmExtractText', 'llmExtractPoints', 'llmTestConnection', 'onLlmProgress',
 ]
 
 export const API_LENGTHS = Object.fromEntries(API_KEYS.map(key => [
@@ -27,4 +27,5 @@ export const RPC_CHANNELS = {
   deviceRawFrame: 'device:rawFrame',
   llmExtractText: 'llm:extractText',
   llmExtractPoints: 'llm:extractPoints',
+  llmTestConnection: 'llm:testConnection',
 }

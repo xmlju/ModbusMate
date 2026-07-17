@@ -38,6 +38,7 @@ function createDependencies() {
   const llmService = Object.assign(new EventEmitter(), {
     extractText: vi.fn(async () => ({ docId: 'doc-1', fileName: '手册.doc', charCount: 300, preview: '预览', format: 'doc' })),
     extractPoints: vi.fn(async () => ({ points: [], stats: { totalTokens: 100 } })),
+    testConnection: vi.fn(async () => ({ ok: true, model: 'deepseek-v4-flash', latencyMs: 8, totalTokens: 12 })),
   })
   return { service, poller, deviceManager, configStore, listSerialPorts, llmService }
 }
@@ -62,6 +63,7 @@ describe('Web Modbus 运行时', () => {
       'device:rawFrame',
       'llm:extractText',
       'llm:extractPoints',
+      'llm:testConnection',
     ])
     await expect(runtime.invoke('points:import')).rejects.toThrow('不支持的运行时通道：points:import')
     await runtime.close()
@@ -123,6 +125,9 @@ describe('Web Modbus 运行时', () => {
     await expect(runtime.invoke('llm:extractPoints', { docId: 'doc-1' }))
       .resolves.toEqual({ points: [], stats: { totalTokens: 100 } })
     expect(deps.llmService.extractPoints).toHaveBeenCalledWith({ docId: 'doc-1' })
+
+    await expect(runtime.invoke('llm:testConnection', { baseURL: 'https://api.deepseek.com', apiKey: 'sk', model: '' }))
+      .resolves.toMatchObject({ ok: true, model: 'deepseek-v4-flash' })
     await runtime.close()
   })
 

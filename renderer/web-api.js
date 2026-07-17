@@ -18,6 +18,7 @@
     deviceRawFrame: ['device:rawFrame', 1],
     llmExtractText: ['llm:extractText', 1],
     llmExtractPoints: ['llm:extractPoints', 1],
+    llmTestConnection: ['llm:testConnection', 1],
   })
   const EVENT_METHODS = Object.freeze({
     onData: 'modbus:data',
@@ -32,6 +33,7 @@
   const RPC_TIMEOUTS = Object.freeze({
     'llm:extractText': 120000,
     'llm:extractPoints': 600000,
+    'llm:testConnection': 30000,
   })
   const MAX_TOKEN_LENGTH = 256
   const MAX_IMPORT_BYTES = 1024 * 1024
