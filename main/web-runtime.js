@@ -25,6 +25,7 @@ const WEB_RUNTIME_CHANNELS = Object.freeze([
   'llm:extractText',
   'llm:extractPoints',
   'llm:testConnection',
+  'llm:getQuota',
 ])
 
 function serializableError(error) {
@@ -105,6 +106,7 @@ class WebRuntime extends EventEmitter {
       'llm:extractText': async params => ({ ok: true, ...(await this.llmService.extractText(params)) }),
       'llm:extractPoints': params => this.llmService.extractPoints(params),
       'llm:testConnection': params => this.llmService.testConnection(params),
+      'llm:getQuota': () => this.llmService.getQuota(),
     })
 
     this._registerSourceListeners()

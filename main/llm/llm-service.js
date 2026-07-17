@@ -14,8 +14,8 @@ const { extractPoints } = require('./point-extractor')
 /** 网页模式上传文件的解码后大小上限（实测 .doc 手册可达 13 MB） */
 const MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 
-/** 普通用户 LLM 解析试用次数上限（高级会员不限；只有解析成功才计数） */
-const TRIAL_LIMIT = 3
+/** 统一积分制：新用户自动赠送积分（解析成功扣 1 分；会员开通时另充值积分叠加） */
+const FREE_CREDITS = 3
 
 /** 允许上传的文档扩展名 */
 const ALLOWED_EXTENSIONS = Object.freeze(['.pdf', '.docx', '.doc', '.txt'])
@@ -37,7 +37,7 @@ class LlmService extends EventEmitter {
     this._running = false   // 同一时间只允许一个 LLM 抽取任务
   }
 
-  /** 读取已用试用次数（文件缺失/损坏一律按 0 处理，不阻塞用户） */
+  /** 读取本地已耗积分（文件缺失/损坏一律按 0 处理，不阻塞用户） */
   _readUsage() {
     if (!this._usageFile) return { used: 0 }
     try {
@@ -49,7 +49,7 @@ class LlmService extends EventEmitter {
     }
   }
 
-  /** 解析成功后累加计数（写失败不影响返回结果，只是下次少算一次） */
+  /** 解析成功后扣 1 分（写失败不影响返回结果，只是下次少算一次） */
   _bumpUsage() {
     if (!this._usageFile) return
     try {
@@ -61,18 +61,46 @@ class LlmService extends EventEmitter {
     } catch { /* 计数写盘失败不阻塞主流程 */ }
   }
 
-  /** 会员判定：预留 config.license.plan === 'premium'（V2 接正式会员体系时替换） */
+  /** 会员判定：预留 config.license.plan === 'premium'（V2 接正式会员/注册体系时替换） */
   _isPremium(config) {
     return config?.license?.plan === 'premium'
   }
 
-  /** 当前配额信息，供前端展示 */
+  /**
+   * 统一积分制配额：
+   * - 新用户自动获得 FREE_CREDITS 分（"新注册送积分"的 V1 本地形态，V2 账号体系接管发放）
+   * - 会员开通时 config.license.credits 写入充值积分，与赠送分叠加
+   * - 会员未写 credits 字段 = 不限（作者/特批），total/remaining 用 null 表示
+   *   （Infinity 过 JSON 桥会变 null，干脆显式）
+   * - 每次解析成功扣 1 分
+   */
   _quota(config) {
-    // premium 的 remaining 用 null 表示不限（Infinity 过 JSON 桥会变 null，干脆显式）
-    if (this._isPremium(config)) return { premium: true, used: 0, limit: TRIAL_LIMIT, remaining: null }
-    if (!this._usageFile) return { premium: false, used: 0, limit: TRIAL_LIMIT, remaining: TRIAL_LIMIT }
+    const premium = this._isPremium(config)
+    const rawCredits = Number(config?.license?.credits)
+    const hasCredits = Number.isFinite(rawCredits) && rawCredits >= 0
+    const purchased = hasCredits ? Math.floor(rawCredits) : (premium ? null : 0)
     const { used } = this._readUsage()
-    return { premium: false, used, limit: TRIAL_LIMIT, remaining: Math.max(0, TRIAL_LIMIT - used) }
+
+    if (premium && purchased === null) {
+      return { premium: true, granted: FREE_CREDITS, purchased: null, used, total: null, remaining: null }
+    }
+    const total = FREE_CREDITS + purchased
+    return {
+      premium,
+      granted: FREE_CREDITS,
+      purchased,
+      used,
+      total,
+      // 未注入计数文件（单测/嵌入场景）时不限次，返回满额
+      remaining: this._usageFile ? Math.max(0, total - used) : total,
+    }
+  }
+
+  /** 只读查询配额（向导打开即展示积分余额） */
+  async getQuota() {
+    let config = null
+    try { config = await this._loadConfig() } catch { /* 配置读取失败按未配置处理 */ }
+    return this._quota(config)
   }
 
   /**
@@ -193,10 +221,12 @@ class LlmService extends EventEmitter {
     try {
       const config = await this._loadConfig()
 
-      // 试用限制：普通用户 3 次（只有解析成功才计数），高级会员不限
+      // 积分把关：解析成功扣 1 分；remaining 为 null 表示会员不限
       const quota = this._quota(config)
-      if (!quota.premium && quota.remaining <= 0) {
-        throw new Error(`试用次数已用完（${quota.used}/${quota.limit}）：AI 生成点表为高级会员功能，请联系作者开通后继续使用`)
+      if (quota.remaining !== null && quota.remaining <= 0) {
+        throw new Error(quota.premium
+          ? `积分已用完（已用 ${quota.used}/${quota.total}）：请联系作者充值后继续使用`
+          : `积分已用完（新用户赠送 ${quota.granted} 分已用尽）：开通高级会员可获得充值积分，请联系作者`)
       }
 
       const llm = config?.llm
@@ -218,8 +248,8 @@ class LlmService extends EventEmitter {
         provider,
         onProgress: progress => this.emit('progress', { docId, ...progress }),
       })
-      // 解析成功才消耗一次试用（失败/中断不计，不冤枉用户）
-      if (!quota.premium) this._bumpUsage()
+      // 解析成功才扣分（失败/中断不计，不冤枉用户）；会员不限额度也记账，便于展示已用量
+      this._bumpUsage()
       return result
     } finally {
       this._running = false
@@ -237,4 +267,4 @@ function createLlmService(options) {
   return new LlmService(options)
 }
 
-module.exports = { createLlmService, LlmService, MAX_UPLOAD_BYTES, ALLOWED_EXTENSIONS, TRIAL_LIMIT }
+module.exports = { createLlmService, LlmService, MAX_UPLOAD_BYTES, ALLOWED_EXTENSIONS, FREE_CREDITS }

@@ -17,6 +17,7 @@ const IPC_CHANNELS = Object.freeze([
   'llm:extractText',
   'llm:extractPoints',
   'llm:testConnection',
+  'llm:getQuota',
   'points:export',
   'points:import',
   'copy-image',

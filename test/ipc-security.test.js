@@ -112,6 +112,7 @@ describe('高权限 IPC 统一注册', () => {
       'llm:extractText',
       'llm:extractPoints',
       'llm:testConnection',
+      'llm:getQuota',
       'points:export',
       'points:import',
       'copy-image',

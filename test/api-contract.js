@@ -3,12 +3,12 @@ export const API_KEYS = [
   'loadConfig', 'saveConfig', 'onData', 'onStatus', 'onLog',
   'deviceStart', 'deviceStop', 'deviceWrite', 'onDeviceData', 'onDeviceStatus',
   'onDeviceLog', 'deviceRawFrame', 'rawRequest', 'exportPoints', 'importPoints', 'copyImage', 'readImage', 'saveImage',
-  'llmExtractText', 'llmExtractPoints', 'llmTestConnection', 'onLlmProgress',
+  'llmExtractText', 'llmExtractPoints', 'llmTestConnection', 'llmGetQuota', 'onLlmProgress',
 ]
 
 export const API_LENGTHS = Object.fromEntries(API_KEYS.map(key => [
   key,
-  ['listSerialPorts', 'disconnect', 'stopPoll', 'loadConfig', 'importPoints'].includes(key) ? 0 : 1,
+  ['listSerialPorts', 'disconnect', 'stopPoll', 'loadConfig', 'importPoints', 'llmGetQuota'].includes(key) ? 0 : 1,
 ]))
 
 export const RPC_CHANNELS = {
@@ -28,4 +28,5 @@ export const RPC_CHANNELS = {
   llmExtractText: 'llm:extractText',
   llmExtractPoints: 'llm:extractPoints',
   llmTestConnection: 'llm:testConnection',
+  llmGetQuota: 'llm:getQuota',
 }

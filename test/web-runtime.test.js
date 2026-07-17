@@ -64,6 +64,7 @@ describe('Web Modbus 运行时', () => {
       'llm:extractText',
       'llm:extractPoints',
       'llm:testConnection',
+      'llm:getQuota',
     ])
     await expect(runtime.invoke('points:import')).rejects.toThrow('不支持的运行时通道：points:import')
     await runtime.close()

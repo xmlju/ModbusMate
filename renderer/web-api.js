@@ -19,6 +19,7 @@
     llmExtractText: ['llm:extractText', 1],
     llmExtractPoints: ['llm:extractPoints', 1],
     llmTestConnection: ['llm:testConnection', 1],
+    llmGetQuota: ['llm:getQuota', 0],
   })
   const EVENT_METHODS = Object.freeze({
     onData: 'modbus:data',

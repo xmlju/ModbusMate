@@ -55,7 +55,7 @@ describe('网页 API 契约与 RPC', () => {
 
   it.each(Object.entries(RPC_CHANNELS))('%s 映射固定 RPC 通道并原样传递参数', async (method, channel) => {
     const { api, fetch } = setup()
-    const noArgs = ['listSerialPorts', 'disconnect', 'stopPoll', 'loadConfig'].includes(method)
+    const noArgs = ['listSerialPorts', 'disconnect', 'stopPoll', 'loadConfig', 'llmGetQuota'].includes(method)
     await expect(noArgs ? api[method]() : api[method]({ sample: 1 })).resolves.toBe('done')
     expect(fetch).toHaveBeenCalledWith(`/api/invoke/${encodeURIComponent(channel)}`, expect.objectContaining({
       method: 'POST', credentials: 'same-origin',

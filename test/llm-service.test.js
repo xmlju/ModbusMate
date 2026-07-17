@@ -3,7 +3,7 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 
-const { createLlmService, MAX_UPLOAD_BYTES, TRIAL_LIMIT } = require('../main/llm/llm-service')
+const { createLlmService, MAX_UPLOAD_BYTES, FREE_CREDITS } = require('../main/llm/llm-service')
 
 function deferred() {
   let resolve
@@ -60,7 +60,7 @@ describe('LLM 点表生成服务', () => {
         charCount: 300,
         preview: '寄存器 0000 电压',
         format: 'txt',
-        quota: { premium: false, used: 0, limit: 3, remaining: 3 },  // 未注入 usageFile 时的默认配额
+        quota: { premium: false, granted: 3, purchased: 0, used: 0, total: 3, remaining: 3 },  // 未注入 usageFile 时的默认配额
       })
       expect(result.text).toBeUndefined()
     })
@@ -240,40 +240,68 @@ describe('LLM 点表生成服务', () => {
       await expect(service.extractPoints({ docId })).resolves.toEqual({ points: [], stats: {} })
     })
 
-    it('普通用户试用 3 次后拒绝，高级会员不限，失败不消耗次数', async () => {
+    it('新用户赠送积分用完后拒绝，会员充值积分叠加，不限会员直通', async () => {
       const usageFile = path.join(os.tmpdir(), `llm-usage-test-${Date.now()}-${Math.random()}.json`)
       try {
         const { service } = createFixture({ usageFile })
         const { docId } = await service.extractText({ filePath: '/docs/手册.pdf' })
 
-        // 前 3 次成功并计数
-        for (let i = 1; i <= TRIAL_LIMIT; i++) {
+        // 赠送 3 分逐次扣减
+        for (let i = 1; i <= FREE_CREDITS; i++) {
           await expect(service.extractPoints({ docId })).resolves.toBeTruthy()
           expect(JSON.parse(fs.readFileSync(usageFile, 'utf8')).used).toBe(i)
         }
         // 第 4 次拒绝，计数不再增长
         await expect(service.extractPoints({ docId }))
-          .rejects.toThrow('试用次数已用完（3/3）')
-        expect(JSON.parse(fs.readFileSync(usageFile, 'utf8')).used).toBe(TRIAL_LIMIT)
+          .rejects.toThrow('积分已用完（新用户赠送 3 分已用尽）')
+        expect(JSON.parse(fs.readFileSync(usageFile, 'utf8')).used).toBe(FREE_CREDITS)
 
-        // 高级会员（config.license.plan）直通且不计数
-        const premium = createFixture({
+        // 会员充值 2 分：total = 3 赠送 + 2 充值 = 5，已用 3 还能再用 2 次
+        const paid = createFixture({
+          usageFile,
+          loadConfig: () => ({
+            llm: { baseURL: 'https://api.deepseek.com', apiKey: 'sk-vip' },
+            license: { plan: 'premium', credits: 2 },
+          }),
+        })
+        const doc2 = await paid.service.extractText({ filePath: '/docs/手册.pdf' })
+        expect(doc2.quota).toEqual({ premium: true, granted: 3, purchased: 2, used: 3, total: 5, remaining: 2 })
+        await expect(paid.service.extractPoints({ docId: doc2.docId })).resolves.toBeTruthy()
+        await expect(paid.service.extractPoints({ docId: doc2.docId })).resolves.toBeTruthy()
+        await expect(paid.service.extractPoints({ docId: doc2.docId }))
+          .rejects.toThrow('积分已用完（已用 5/5）：请联系作者充值')
+
+        // 不限会员（无 credits 字段）：直通且照常记账
+        const unlimited = createFixture({
           usageFile,
           loadConfig: () => ({
             llm: { baseURL: 'https://api.deepseek.com', apiKey: 'sk-vip' },
             license: { plan: 'premium' },
           }),
         })
-        const doc2 = await premium.service.extractText({ filePath: '/docs/手册.pdf' })
-        expect(doc2.quota).toEqual({ premium: true, used: 0, limit: TRIAL_LIMIT, remaining: null })
-        await expect(premium.service.extractPoints({ docId: doc2.docId })).resolves.toBeTruthy()
-        expect(JSON.parse(fs.readFileSync(usageFile, 'utf8')).used).toBe(TRIAL_LIMIT)
+        const doc3 = await unlimited.service.extractText({ filePath: '/docs/手册.pdf' })
+        expect(doc3.quota).toEqual({ premium: true, granted: 3, purchased: null, used: 5, total: null, remaining: null })
+        await expect(unlimited.service.extractPoints({ docId: doc3.docId })).resolves.toBeTruthy()
+        expect(JSON.parse(fs.readFileSync(usageFile, 'utf8')).used).toBe(6)
       } finally {
         try { fs.unlinkSync(usageFile) } catch { /* 清理测试文件 */ }
       }
     })
 
-    it('解析失败不消耗试用次数', async () => {
+    it('getQuota 只读查询不产生任何计数', async () => {
+      const usageFile = path.join(os.tmpdir(), `llm-usage-test-${Date.now()}-${Math.random()}.json`)
+      try {
+        const { service } = createFixture({ usageFile })
+        await expect(service.getQuota()).resolves.toEqual({
+          premium: false, granted: 3, purchased: 0, used: 0, total: 3, remaining: 3,
+        })
+        expect(fs.existsSync(usageFile)).toBe(false)
+      } finally {
+        try { fs.unlinkSync(usageFile) } catch { /* 清理测试文件 */ }
+      }
+    })
+
+    it('解析失败不消耗积分', async () => {
       const usageFile = path.join(os.tmpdir(), `llm-usage-test-${Date.now()}-${Math.random()}.json`)
       try {
         const extractPoints = vi.fn().mockRejectedValue(new Error('LLM API 错误 (500)'))
@@ -287,14 +315,14 @@ describe('LLM 点表生成服务', () => {
       }
     })
 
-    it('extractText 返回的 quota 反映剩余次数', async () => {
+    it('extractText 返回的 quota 反映剩余积分', async () => {
       const usageFile = path.join(os.tmpdir(), `llm-usage-test-${Date.now()}-${Math.random()}.json`)
       try {
         fs.writeFileSync(usageFile, JSON.stringify({ used: 2 }))
         const { service } = createFixture({ usageFile })
 
         const result = await service.extractText({ filePath: '/docs/手册.pdf' })
-        expect(result.quota).toEqual({ premium: false, used: 2, limit: TRIAL_LIMIT, remaining: 1 })
+        expect(result.quota).toEqual({ premium: false, granted: 3, purchased: 0, used: 2, total: 3, remaining: 1 })
       } finally {
         try { fs.unlinkSync(usageFile) } catch { /* 清理测试文件 */ }
       }

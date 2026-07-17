@@ -71,7 +71,29 @@ function _cleanupProgress() {
 // 弹窗开关
 // ═══════════════════════════════════════════════
 
+/** 配额文案：统一积分制（会员显示充值余额，非会员显示赠送分余额） */
+function quotaText(q) {
+  if (!q) return ''
+  if (q.total === null) return `高级会员 · 积分不限（已用 ${q.used}）`
+  if (q.premium) return `高级会员 · 积分 ${q.remaining}/${q.total}`
+  return `积分 ${q.remaining}/${q.total}（新用户赠 ${q.granted} 分）`
+}
+
+/** 刷新标题旁的积分徽章（打开向导、解析成功后各刷一次） */
+function refreshQuotaBadge() {
+  const badge = $('llmQuotaBadge')
+  if (!badge || typeof window.api?.llmGetQuota !== 'function') return
+  window.api.llmGetQuota()
+    .then(q => {
+      badge.textContent = quotaText(q)
+      badge.style.color = (q && q.remaining !== null && q.remaining <= 0) ? 'var(--status-critical)' : ''
+    })
+    .catch(() => { badge.textContent = '' })
+}
+
 function openModal() {
+  refreshQuotaBadge()
+
   // 加载设置：config.json 优先，localStorage 兜底
   loadSettings().then(settings => {
     if (settings.baseURL) $('llmBaseUrl').value = settings.baseURL
@@ -298,12 +320,17 @@ function onFileSelected(file) {
         // 显示文件预览
         showFilePreview(file.name, result)
 
-        // 试用配额提示（高级会员不显示）
+        // 积分提示：解析一次扣 1 分，余额不足提前告知
         const docInfo = $('llmDocInfo')
-        if (docInfo && result.quota && !result.quota.premium) {
-          docInfo.textContent = result.quota.remaining > 0
-            ? `AI 生成点表为高级会员功能，普通用户可试用 ${result.quota.limit} 次，剩余 ${result.quota.remaining} 次`
-            : `试用次数已用完（${result.quota.used}/${result.quota.limit}），请联系作者开通高级会员`
+        const q = result.quota
+        if (docInfo && q) {
+          if (q.remaining !== null && q.remaining <= 0) {
+            docInfo.textContent = q.premium
+              ? `积分已用完（已用 ${q.used}/${q.total}），请联系作者充值`
+              : `积分已用完（新用户赠送 ${q.granted} 分已用尽），开通高级会员可获得充值积分`
+          } else {
+            docInfo.textContent = `解析一次消耗 1 积分 · 当前${quotaText(q)}`
+          }
         }
         updateNav()
       })
@@ -455,10 +482,11 @@ function onParse() {
       state.stats = result.stats || {}
       state.totalTokens = result.stats?.totalTokens || state.totalTokens
 
-      // 隐藏进度，显示完成态
+      // 隐藏进度，显示完成态；扣分后刷新积分徽章
       progressWrap.classList.add('hidden')
       parseIdle.classList.remove('hidden')
       parseIdle.innerHTML = `<p class="good">解析完成，共提取 ${state.points.length} 个点位</p>`
+      refreshQuotaBadge()
 
       _cleanupProgress()
       updateNav()

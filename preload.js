@@ -38,6 +38,7 @@ contextBridge.exposeInMainWorld('api', {
   llmExtractText:   p  => ipcRenderer.invoke('llm:extractText', p),
   llmExtractPoints: p  => ipcRenderer.invoke('llm:extractPoints', p),
   llmTestConnection: p => ipcRenderer.invoke('llm:testConnection', p),
+  llmGetQuota:      ()  => ipcRenderer.invoke('llm:getQuota'),
   onLlmProgress:    fn => ipcRenderer.on('llm:progress', (_e, p) => fn(p)),
 
   // 点表导入导出
