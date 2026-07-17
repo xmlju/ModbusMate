@@ -242,6 +242,7 @@ async function startWebServer(options = {}) {
   if (typeof token !== 'string' || token.length === 0) throw new TypeError('Web 访问令牌不能为空')
   const runtime = options.runtime ?? createWebRuntime({
     configStore: createConfigStore(path.join(dataDir, 'config.json')),
+    llmUsageFile: path.join(dataDir, 'llm-usage.json'),
   })
   const sseResponses = new Set()
   const sockets = new Set()

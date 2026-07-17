@@ -297,6 +297,14 @@ function onFileSelected(file) {
 
         // 显示文件预览
         showFilePreview(file.name, result)
+
+        // 试用配额提示（高级会员不显示）
+        const docInfo = $('llmDocInfo')
+        if (docInfo && result.quota && !result.quota.premium) {
+          docInfo.textContent = result.quota.remaining > 0
+            ? `AI 生成点表为高级会员功能，普通用户可试用 ${result.quota.limit} 次，剩余 ${result.quota.remaining} 次`
+            : `试用次数已用完（${result.quota.used}/${result.quota.limit}），请联系作者开通高级会员`
+        }
         updateNav()
       })
       .catch(err => {

@@ -37,8 +37,11 @@ const configFile = () => path.join(app.getPath('userData'), 'config.json')
 function loadConfig() { try { return JSON.parse(fs.readFileSync(configFile(), 'utf8')) } catch { return {} } }
 function saveConfig(cfg) { fs.writeFileSync(configFile(), JSON.stringify(cfg)) }
 
-// ── LLM 点表生成服务（配置从 config.json 的 llm 字段读取）──
-const llmService = createLlmService({ loadConfig })
+// ── LLM 点表生成服务（配置从 config.json 的 llm 字段读取；试用计数独立存放）──
+const llmService = createLlmService({
+  loadConfig,
+  usageFile: path.join(app.getPath('userData'), 'llm-usage.json'),
+})
 
 function createWindow() {
   win = new BrowserWindow({

@@ -204,6 +204,7 @@ function createWebRuntime(options = {}) {
   )
   const llmService = options.llmService ?? createLlmService({
     loadConfig: () => configStore.load(),
+    usageFile: options.llmUsageFile,
   })
 
   return new WebRuntime({

@@ -14,6 +14,9 @@ const { extractPoints } = require('./point-extractor')
 /** 网页模式上传文件的解码后大小上限（实测 .doc 手册可达 13 MB） */
 const MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 
+/** 普通用户 LLM 解析试用次数上限（高级会员不限；只有解析成功才计数） */
+const TRIAL_LIMIT = 3
+
 /** 允许上传的文档扩展名 */
 const ALLOWED_EXTENSIONS = Object.freeze(['.pdf', '.docx', '.doc', '.txt'])
 
@@ -28,8 +31,48 @@ class LlmService extends EventEmitter {
     this._createProvider = options.createProvider ?? createProvider
     this._extractPoints = options.extractPoints ?? extractPoints
     this._tmpDir = options.tmpDir ?? os.tmpdir()
+    // 试用计数文件路径。未注入时不限次（单测/嵌入场景）；生产两端都会注入
+    this._usageFile = options.usageFile ?? null
     this._doc = null        // 最近一次抽取的文档：{ docId, text, fileName, charCount, preview, format }
     this._running = false   // 同一时间只允许一个 LLM 抽取任务
+  }
+
+  /** 读取已用试用次数（文件缺失/损坏一律按 0 处理，不阻塞用户） */
+  _readUsage() {
+    if (!this._usageFile) return { used: 0 }
+    try {
+      const raw = JSON.parse(fs.readFileSync(this._usageFile, 'utf8'))
+      const used = Number(raw?.used)
+      return { used: Number.isFinite(used) && used > 0 ? Math.floor(used) : 0 }
+    } catch {
+      return { used: 0 }
+    }
+  }
+
+  /** 解析成功后累加计数（写失败不影响返回结果，只是下次少算一次） */
+  _bumpUsage() {
+    if (!this._usageFile) return
+    try {
+      const { used } = this._readUsage()
+      fs.writeFileSync(this._usageFile, JSON.stringify({
+        used: used + 1,
+        lastUsedAt: new Date().toISOString(),
+      }))
+    } catch { /* 计数写盘失败不阻塞主流程 */ }
+  }
+
+  /** 会员判定：预留 config.license.plan === 'premium'（V2 接正式会员体系时替换） */
+  _isPremium(config) {
+    return config?.license?.plan === 'premium'
+  }
+
+  /** 当前配额信息，供前端展示 */
+  _quota(config) {
+    // premium 的 remaining 用 null 表示不限（Infinity 过 JSON 桥会变 null，干脆显式）
+    if (this._isPremium(config)) return { premium: true, used: 0, limit: TRIAL_LIMIT, remaining: null }
+    if (!this._usageFile) return { premium: false, used: 0, limit: TRIAL_LIMIT, remaining: TRIAL_LIMIT }
+    const { used } = this._readUsage()
+    return { premium: false, used, limit: TRIAL_LIMIT, remaining: Math.max(0, TRIAL_LIMIT - used) }
   }
 
   /**
@@ -83,12 +126,16 @@ class LlmService extends EventEmitter {
         preview: result.preview,
         format: result.format,
       }
+      // 附带配额信息，前端在向导里展示"试用剩余 N 次"
+      let quota
+      try { quota = this._quota(await this._loadConfig()) } catch { quota = this._quota(null) }
       return {
         docId,
         fileName: displayName,
         charCount: result.charCount,
         preview: result.preview,
         format: result.format,
+        quota,
       }
     } finally {
       if (cleanupPath) {
@@ -145,6 +192,13 @@ class LlmService extends EventEmitter {
 
     try {
       const config = await this._loadConfig()
+
+      // 试用限制：普通用户 3 次（只有解析成功才计数），高级会员不限
+      const quota = this._quota(config)
+      if (!quota.premium && quota.remaining <= 0) {
+        throw new Error(`试用次数已用完（${quota.used}/${quota.limit}）：AI 生成点表为高级会员功能，请联系作者开通后继续使用`)
+      }
+
       const llm = config?.llm
       if (!llm || typeof llm !== 'object') {
         throw new Error('尚未配置 LLM 服务，请先在设置中填写 API Key、baseURL 和模型')
@@ -159,11 +213,14 @@ class LlmService extends EventEmitter {
         timeoutMs: llm.timeoutMs,
       })
 
-      return await this._extractPoints({
+      const result = await this._extractPoints({
         text: this._doc.text,
         provider,
         onProgress: progress => this.emit('progress', { docId, ...progress }),
       })
+      // 解析成功才消耗一次试用（失败/中断不计，不冤枉用户）
+      if (!quota.premium) this._bumpUsage()
+      return result
     } finally {
       this._running = false
     }
@@ -180,4 +237,4 @@ function createLlmService(options) {
   return new LlmService(options)
 }
 
-module.exports = { createLlmService, LlmService, MAX_UPLOAD_BYTES, ALLOWED_EXTENSIONS }
+module.exports = { createLlmService, LlmService, MAX_UPLOAD_BYTES, ALLOWED_EXTENSIONS, TRIAL_LIMIT }
