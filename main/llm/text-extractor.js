@@ -79,7 +79,18 @@ function createDocExtractor(WordExtractor) {
 let _defaultPdf, _defaultDocx, _defaultDoc
 function getExtractors() {
   if (!_defaultPdf) {
-    _defaultPdf = createPdfExtractor(require('pdf-parse'))
+    // pdf-parse v2 是类接口（v1 的函数式调用已废弃），这里包一层适配成
+    // createPdfExtractor 期望的 `async (buffer) => { text }` 形态
+    const { PDFParse } = require('pdf-parse')
+    const pdfParse = async dataBuffer => {
+      const parser = new PDFParse({ data: new Uint8Array(dataBuffer) })
+      try {
+        return await parser.getText()   // { text, ... }
+      } finally {
+        try { await parser.destroy?.() } catch { /* 释放失败不影响结果 */ }
+      }
+    }
+    _defaultPdf = createPdfExtractor(pdfParse)
     _defaultDocx = createDocxExtractor(require('mammoth'))
     _defaultDoc = createDocExtractor(require('word-extractor'))
   }
